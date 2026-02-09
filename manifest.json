@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "SuperNavi - PathoWeb Bridge",
+  "version": "0.1.0",
+  "description": "Integra SuperNavi com PathoWeb para visualizacao rapida de laminas digitalizadas",
+  "permissions": ["storage", "activeTab"],
+  "host_permissions": [
+    "https://pathoweb.com.br/*",
+    "http://localhost:3001/*",
+    "https://api.supernavi.app/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "*://pathoweb.com.br/moduloExame/index*",
+        "*://pathoweb.com.br/moduloExame/*",
+        "*://*.pathoweb.com.br/*"
+      ],
+      "js": ["content.js"],
+      "css": ["ui.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

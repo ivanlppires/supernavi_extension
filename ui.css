@@ -1,0 +1,322 @@
+/* SuperNavi PathoWeb Extension - Stealth UI */
+
+/* ========================================
+   FAB (Floating Action Button) - Stealth
+   ======================================== */
+.snavi-fab {
+  position: fixed;
+  right: 18px;
+  bottom: 88px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  opacity: 0.35;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  padding: 0;
+  outline: none;
+}
+
+.snavi-fab:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.snavi-fab-icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* Status dot */
+.snavi-dot {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  right: -1px;
+  bottom: -1px;
+  border: 1.5px solid #fff;
+}
+
+.snavi-dot--ready {
+  background: #34C759;
+}
+
+.snavi-dot--processing {
+  background: #FF9500;
+  animation: snavi-pulse 1.5s infinite;
+}
+
+.snavi-dot--error {
+  background: #FF3B30;
+}
+
+@keyframes snavi-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* ========================================
+   Popover (multi-slide selection)
+   ======================================== */
+.snavi-popover {
+  position: fixed;
+  right: 54px;
+  bottom: 80px;
+  width: 220px;
+  max-height: 280px;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.18);
+  z-index: 99998;
+  overflow: hidden;
+  opacity: 0;
+  transform: scale(0.95) translateY(4px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  pointer-events: none;
+}
+
+.snavi-popover--visible {
+  opacity: 1;
+  transform: scale(1) translateY(0);
+  pointer-events: auto;
+}
+
+.snavi-popover-header {
+  padding: 10px 12px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.snavi-popover-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.snavi-popover-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background 0.1s;
+  font-size: 13px;
+  color: #333;
+}
+
+.snavi-popover-item:hover {
+  background: #f5f5f7;
+}
+
+.snavi-popover-thumb {
+  width: 36px;
+  height: 36px;
+  border-radius: 4px;
+  object-fit: cover;
+  background: #f0f0f0;
+}
+
+.snavi-popover-label {
+  font-weight: 500;
+}
+
+/* ========================================
+   Modal (link confirmation)
+   ======================================== */
+.snavi-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 100000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+
+.snavi-modal-overlay--visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.snavi-modal {
+  background: #fff;
+  border-radius: 14px;
+  width: 340px;
+  max-width: 90vw;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+  transform: scale(0.95);
+  transition: transform 0.2s ease;
+}
+
+.snavi-modal-overlay--visible .snavi-modal {
+  transform: scale(1);
+}
+
+.snavi-modal-body {
+  padding: 24px 20px 16px;
+  text-align: center;
+}
+
+.snavi-modal-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1d1d1f;
+  margin: 0 0 8px;
+}
+
+.snavi-modal-text {
+  font-size: 13px;
+  color: #6e6e73;
+  margin: 0 0 16px;
+  line-height: 1.4;
+}
+
+.snavi-modal-thumb {
+  width: 100%;
+  max-height: 140px;
+  object-fit: contain;
+  border-radius: 8px;
+  background: #f5f5f7;
+  margin-bottom: 12px;
+}
+
+.snavi-modal-filename {
+  font-size: 11px;
+  color: #86868b;
+  margin: 0 0 16px;
+  font-family: monospace;
+}
+
+.snavi-modal-actions {
+  display: flex;
+  border-top: 1px solid #e5e5e5;
+}
+
+.snavi-modal-btn {
+  flex: 1;
+  padding: 14px;
+  border: none;
+  background: none;
+  font-size: 15px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.snavi-modal-btn:hover {
+  background: #f5f5f7;
+}
+
+.snavi-modal-btn--dismiss {
+  color: #007AFF;
+  border-right: 1px solid #e5e5e5;
+}
+
+.snavi-modal-btn--confirm {
+  color: #007AFF;
+  font-weight: 600;
+}
+
+.snavi-modal-link {
+  font-size: 11px;
+  color: #007AFF;
+  text-decoration: none;
+  cursor: pointer;
+  padding: 6px 0 12px;
+  display: inline-block;
+}
+
+.snavi-modal-link:hover {
+  text-decoration: underline;
+}
+
+/* ========================================
+   Popover manual search input
+   ======================================== */
+.snavi-popover-manual {
+  border-top: 1px solid #f0f0f0;
+}
+
+.snavi-popover-manual-row {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px 10px;
+}
+
+.snavi-popover-input {
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid #d2d2d7;
+  border-radius: 6px;
+  font-size: 12px;
+  font-family: monospace;
+  outline: none;
+  min-width: 0;
+}
+
+.snavi-popover-input:focus {
+  border-color: #007AFF;
+  box-shadow: 0 0 0 2px rgba(0,122,255,0.1);
+}
+
+.snavi-popover-go {
+  padding: 6px 10px;
+  background: #007AFF;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.snavi-popover-go:hover {
+  opacity: 0.85;
+}
+
+/* ========================================
+   Debug Toast
+   ======================================== */
+.snavi-toast {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%) translateY(10px);
+  background: rgba(0, 0, 0, 0.8);
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-family: monospace;
+  z-index: 100001;
+  opacity: 0;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  pointer-events: none;
+  max-width: 90vw;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.snavi-toast--visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
