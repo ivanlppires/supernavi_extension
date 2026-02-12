@@ -1,8 +1,8 @@
 /**
  * SuperNavi PathoWeb Extension - Content Script
  *
- * Detects AP case numbers from PathoWeb pages, injects stealth FAB,
- * and manages the linking modal for unconfirmed candidates.
+ * Detects AP case numbers from PathoWeb pages, injects a side handle
+ * that opens a drawer with slide list and manual search.
  */
 
 const AP_PATTERN = /\b(AP\d{6,12})\b/i;
@@ -11,15 +11,48 @@ const COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24h
 
 let currentCaseBase = null;
 let currentStatus = null;
-let fabEl = null;
-let popoverEl = null;
+let currentPatientData = null; // { patientName, patientId, age, doctor }
+let authInfo = null;
+let handleEl = null;
+let drawerEl = null;
+let drawerOpen = false;
 let modalEl = null;
 let toastEl = null;
 let debounceTimer = null;
 let configCache = null;
 
 // ============================================================================
-// Config cache (fetched from background once)
+// SVG Icons
+// ============================================================================
+
+const ICON = {
+  close: `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+    <line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/>
+  </svg>`,
+  chevron: `<svg class="snavi-drawer-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M6 3l5 5-5 5"/>
+  </svg>`,
+  folder: `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M2 4.5V12a1 1 0 001 1h10a1 1 0 001-1V6a1 1 0 00-1-1H8L6.5 3.5H3A1 1 0 002 4.5z"/>
+  </svg>`,
+  slide: `<svg class="snavi-drawer-empty-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round">
+    <rect x="8" y="14" width="32" height="20" rx="3"/>
+    <circle cx="24" cy="24" r="5.5"/><circle cx="24" cy="24" r="1.5"/>
+  </svg>`,
+  user: `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="8" cy="5.5" r="2.5"/><path d="M3 14c0-2.8 2.2-5 5-5s5 2.2 5 5"/>
+  </svg>`,
+  link: `<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M16.5 23.5a6.5 6.5 0 009.2 0l4-4a6.5 6.5 0 00-9.2-9.2l-2 2"/>
+    <path d="M23.5 16.5a6.5 6.5 0 00-9.2 0l-4 4a6.5 6.5 0 009.2 9.2l2-2"/>
+  </svg>`,
+  check: `<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 21l6 6 10-13"/>
+  </svg>`,
+};
+
+// ============================================================================
+// Config
 // ============================================================================
 
 async function getConfig() {
@@ -28,8 +61,6 @@ async function getConfig() {
     chrome.storage.sync.get({
       apiBaseUrl: 'http://localhost:3001',
       debug: false,
-      fabRight: 18,
-      fabBottom: 88,
     }, result => {
       configCache = result;
       resolve(result);
@@ -41,15 +72,13 @@ async function getConfig() {
 // Case Detection
 // ============================================================================
 
-/**
- * Detect AP case base from page content.
- * Tries specific selectors first, then falls back to body text scan.
- */
 function detectCaseBase() {
-  // Strategy 1: Common PathoWeb selectors
+  // First try prominent elements (headers, case-specific selectors)
   const selectors = [
+    '#botaoMenu',
     '.case-number', '.case-id', '#case-header', '#caseNumber',
     '[data-case-id]', '.patient-header', '.exam-header',
+    '.btn-cabecalho',
     'h1', 'h2', 'h3',
     '.breadcrumb', '.page-title', '.header-title',
   ];
@@ -62,169 +91,388 @@ function detectCaseBase() {
     }
   }
 
-  // Strategy 2: Title
   const titleMatch = document.title.match(AP_PATTERN);
   if (titleMatch) return titleMatch[1].toUpperCase();
 
-  // Strategy 3: Scan body text (limited to first 5000 chars for performance)
-  const bodyText = document.body?.innerText?.substring(0, 5000) || '';
-  const bodyMatch = bodyText.match(AP_PATTERN);
-  if (bodyMatch) return bodyMatch[1].toUpperCase();
+  // Fallback: scan body text, but only if there's a SINGLE unique AP number.
+  // Multiple AP numbers means it's a list page, not a single case view.
+  const bodyText = document.body?.innerText?.substring(0, 10000) || '';
+  const allMatches = bodyText.match(new RegExp(AP_PATTERN.source, 'gi'));
+  if (allMatches) {
+    const unique = new Set(allMatches.map(m => m.toUpperCase()));
+    if (unique.size === 1) {
+      return [...unique][0];
+    }
+  }
 
   return null;
 }
 
 // ============================================================================
-// FAB (Floating Action Button)
+// Patient Data Scraping (AJAX-loaded content)
 // ============================================================================
 
-async function createFAB() {
-  if (fabEl) return;
+function scrapePatientData() {
+  // PathoWeb renders patient info as label:value pairs in the page body.
+  // Scan the visible text for known patterns.
+  const text = document.body?.innerText || '';
 
-  const cfg = await getConfig();
+  const data = {};
 
-  fabEl = document.createElement('button');
-  fabEl.className = 'snavi-fab';
-  fabEl.title = 'SuperNavi';
-  fabEl.style.right = `${cfg.fabRight}px`;
-  fabEl.style.bottom = `${cfg.fabBottom}px`;
-  fabEl.innerHTML = `
-    <svg class="snavi-fab-icon" viewBox="0 0 24 24" fill="none" stroke="#007AFF" stroke-width="2">
-      <circle cx="12" cy="12" r="3"/>
-      <path d="M2 12h4m12 0h4M12 2v4m0 12v4"/>
-    </svg>
-    <span class="snavi-dot snavi-dot--ready"></span>
-  `;
-  fabEl.addEventListener('click', onFABClick);
-  document.body.appendChild(fabEl);
+  // Paciente: NOME COMPLETO (stop before Id: or next label)
+  const patientMatch = text.match(/Paciente:\s*(.+?)(?=\s+Id:|\s+Idade:|\n|\r|$)/i);
+  if (patientMatch) data.patientName = patientMatch[1].trim();
+
+  // Id: 12345678
+  const idMatch = text.match(/\bId:\s*(\d+)/i);
+  if (idMatch) data.patientId = idMatch[1].trim();
+
+  // Idade: 25
+  const ageMatch = text.match(/Idade:\s*(\d+)/i);
+  if (ageMatch) data.age = ageMatch[1].trim();
+
+  // Médico requisitante: NOME (stop before next label or line break)
+  // Note: "Médico" may appear as "MÃ©dico" due to encoding issues
+  const doctorMatch = text.match(/[Mm](?:[ée]|Ã©)dico\s+requisitante:\s*(.+?)(?=\s+[Mm](?:[ée]|Ã©)dico|\n|\r|$)/i);
+  if (doctorMatch) data.doctor = doctorMatch[1].trim();
+
+  return Object.keys(data).length > 0 ? data : null;
 }
 
-function removeFAB() {
-  if (fabEl) {
-    fabEl.remove();
-    fabEl = null;
+/**
+ * Try to scrape patient data, retrying a few times since AJAX loads late.
+ */
+function scrapePatientDataWithRetry(maxAttempts = 6, intervalMs = 2000) {
+  let attempts = 0;
+  const tryNow = () => {
+    attempts++;
+    const data = scrapePatientData();
+    if (data && data.patientName) {
+      currentPatientData = data;
+      return;
+    }
+    if (attempts < maxAttempts) {
+      setTimeout(tryNow, intervalMs);
+    }
+  };
+  tryNow();
+}
+
+// ============================================================================
+// Handle
+// ============================================================================
+
+async function createHandle() {
+  if (handleEl) return;
+
+  handleEl = document.createElement('button');
+  handleEl.className = 'snavi-handle';
+  handleEl.title = 'SuperNavi';
+  handleEl.innerHTML = '<span class="snavi-handle-text">SUPERNAVI</span>';
+  handleEl.addEventListener('click', onHandleClick);
+  document.body.appendChild(handleEl);
+}
+
+function removeHandle() {
+  if (handleEl) {
+    handleEl.remove();
+    handleEl = null;
   }
-  removePopover();
+  closeDrawer();
 }
 
-function updateFABState(status) {
-  if (!fabEl) return;
-  const dot = fabEl.querySelector('.snavi-dot');
-  if (!dot) return;
-
-  dot.className = 'snavi-dot';
+function updateHandleState(status) {
+  if (!handleEl) return;
   if (status.readySlides?.length > 0) {
-    dot.classList.add('snavi-dot--ready');
-    fabEl.title = `SuperNavi: ${status.readySlides.length} lamina(s) pronta(s)`;
+    handleEl.title = `SuperNavi: ${status.readySlides.length} lamina(s) pronta(s)`;
   } else if (status.processingSlides?.length > 0) {
-    dot.classList.add('snavi-dot--processing');
-    fabEl.title = 'SuperNavi: Preparando...';
-  } else {
-    dot.classList.add('snavi-dot--error');
-    fabEl.title = 'SuperNavi: Erro';
+    handleEl.title = 'SuperNavi: Preparando...';
   }
 }
 
-function onFABClick(e) {
+function onHandleClick(e) {
   e.stopPropagation();
-  // Always show popover (with slides list + manual input)
-  togglePopover();
+  toggleDrawer();
 }
 
 // ============================================================================
-// Popover (multi-slide selection + manual caseBase input)
+// Drawer
 // ============================================================================
 
-function createPopover(slides) {
-  removePopover();
+function getStatusClass() {
+  if (!currentStatus) return '';
+  if (currentStatus.readySlides?.length > 0) return 'snavi-drawer-status--ready';
+  if (currentStatus.processingSlides?.length > 0) return 'snavi-drawer-status--processing';
+  return 'snavi-drawer-status--error';
+}
 
-  const ready = slides || [];
-  const hasSlides = ready.length > 0;
+function createDrawer() {
+  if (drawerEl) return;
+  drawerEl = document.createElement('div');
+  drawerEl.className = 'snavi-drawer';
+  document.body.appendChild(drawerEl);
+}
 
-  popoverEl = document.createElement('div');
-  popoverEl.className = 'snavi-popover';
-  popoverEl.innerHTML = `
-    ${hasSlides ? `
-      <div class="snavi-popover-header">Laminas</div>
-      <ul class="snavi-popover-list">
-        ${ready.map(s => `
-          <li class="snavi-popover-item" data-slide-id="${s.slideId}">
-            ${s.thumbUrl ? `<img class="snavi-popover-thumb" src="${getThumbUrl(s.thumbUrl)}" alt="" />` : ''}
-            <span class="snavi-popover-label">${escapeHtml(s.label)}</span>
-          </li>
-        `).join('')}
-      </ul>
-    ` : ''}
-    <div class="snavi-popover-manual">
-      <div class="snavi-popover-header">Busca manual</div>
-      <div class="snavi-popover-manual-row">
-        <input class="snavi-popover-input" type="text" placeholder="AP26000230"
-               value="${currentCaseBase || ''}" />
-        <button class="snavi-popover-go">Buscar</button>
+function renderDrawerContent() {
+  if (!drawerEl) return;
+
+  // ── Not authenticated: full-drawer pairing onboarding ──
+  if (!authInfo?.authenticated) {
+    renderPairingView();
+    return;
+  }
+
+  // ── Authenticated: normal slide drawer ──
+  renderAuthenticatedView();
+}
+
+function renderPairingView() {
+  const statusCls = getStatusClass();
+
+  drawerEl.innerHTML = `
+    <div class="snavi-drawer-header">
+      <div class="snavi-drawer-brand">
+        <span class="snavi-drawer-title">SuperNavi</span>
+        ${statusCls ? `<span class="snavi-drawer-status ${statusCls}"></span>` : ''}
+      </div>
+      <button class="snavi-drawer-close">${ICON.close}</button>
+    </div>
+    <div class="snavi-pair-view">
+      <div class="snavi-pair-hero">
+        <div class="snavi-pair-icon-ring">
+          <div class="snavi-pair-icon">${ICON.link}</div>
+        </div>
+        <h2 class="snavi-pair-title">Conectar dispositivo</h2>
+        <p class="snavi-pair-desc">Vincule esta extensao a sua conta SuperNavi para visualizar laminas diretamente do PathoWeb.</p>
+      </div>
+
+      <div class="snavi-pair-steps">
+        <div class="snavi-pair-step">
+          <span class="snavi-pair-step-num">1</span>
+          <span class="snavi-pair-step-text">Abra <a href="http://localhost:3002/pair" target="_blank" class="snavi-pair-link">supernavi.app/pair</a></span>
+        </div>
+        <div class="snavi-pair-step">
+          <span class="snavi-pair-step-num">2</span>
+          <span class="snavi-pair-step-text">Gere um <strong>codigo de pareamento</strong></span>
+        </div>
+        <div class="snavi-pair-step">
+          <span class="snavi-pair-step-num">3</span>
+          <span class="snavi-pair-step-text">Insira o codigo abaixo</span>
+        </div>
+      </div>
+
+      <div class="snavi-pair-form">
+        <div class="snavi-pair-input-wrap">
+          <input class="snavi-pair-input" type="text"
+                 maxlength="6" autocomplete="off" spellcheck="false"
+                 placeholder="------" />
+          <div class="snavi-pair-dots">
+            <span class="snavi-pair-dot"></span>
+            <span class="snavi-pair-dot"></span>
+            <span class="snavi-pair-dot"></span>
+            <span class="snavi-pair-dot"></span>
+            <span class="snavi-pair-dot"></span>
+            <span class="snavi-pair-dot"></span>
+          </div>
+        </div>
+        <button class="snavi-pair-btn" disabled>
+          <span class="snavi-pair-btn-text">Conectar</span>
+        </button>
+        <div class="snavi-pair-feedback"></div>
       </div>
     </div>
   `;
 
-  // Slide click handlers
-  popoverEl.querySelectorAll('.snavi-popover-item').forEach(item => {
+  // Wire close
+  drawerEl.querySelector('.snavi-drawer-close').addEventListener('click', closeDrawer);
+
+  // Wire pairing form
+  const input = drawerEl.querySelector('.snavi-pair-input');
+  const btn = drawerEl.querySelector('.snavi-pair-btn');
+  const dots = drawerEl.querySelectorAll('.snavi-pair-dot');
+
+  input.addEventListener('input', () => {
+    input.value = input.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const len = input.value.length;
+
+    // Update dot indicators
+    dots.forEach((dot, i) => {
+      dot.classList.toggle('snavi-pair-dot--filled', i < len);
+    });
+
+    // Enable button only when 6 chars
+    btn.disabled = len !== 6;
+  });
+
+  btn.addEventListener('click', () => {
+    const code = input.value.trim();
+    if (code.length !== 6) return;
+    btn.disabled = true;
+    btn.classList.add('snavi-pair-btn--loading');
+    btn.querySelector('.snavi-pair-btn-text').textContent = 'Conectando...';
+    try {
+      chrome.runtime.sendMessage({ type: 'CLAIM_PAIRING_CODE', code });
+    } catch (err) {
+      // Extension context invalidated — reload to reconnect
+      btn.disabled = false;
+      btn.classList.remove('snavi-pair-btn--loading');
+      btn.querySelector('.snavi-pair-btn-text').textContent = 'Conectar';
+      const feedbackEl = drawerEl?.querySelector('.snavi-pair-feedback');
+      if (feedbackEl) {
+        feedbackEl.textContent = 'Extensao recarregada. Tente novamente.';
+        feedbackEl.classList.add('snavi-pair-feedback--error');
+      }
+    }
+  });
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') btn.click();
+  });
+
+  // Auto-focus input
+  setTimeout(() => input.focus(), 300);
+}
+
+function renderAuthenticatedView() {
+  const slides = currentStatus?.readySlides || [];
+  const hasSlides = slides.length > 0;
+  const statusCls = getStatusClass();
+
+  drawerEl.innerHTML = `
+    <div class="snavi-drawer-header">
+      <div class="snavi-drawer-brand">
+        <span class="snavi-drawer-title">SuperNavi</span>
+        ${statusCls ? `<span class="snavi-drawer-status ${statusCls}"></span>` : ''}
+      </div>
+      <button class="snavi-drawer-close">${ICON.close}</button>
+    </div>
+    <div class="snavi-drawer-body">
+      ${currentCaseBase ? `
+        <div class="snavi-drawer-case">
+          <div class="snavi-drawer-case-icon">${ICON.folder}</div>
+          <div class="snavi-drawer-case-info">
+            <div class="snavi-drawer-case-label">Caso ativo</div>
+            <div class="snavi-drawer-case-value">${escapeHtml(currentCaseBase)}</div>
+          </div>
+        </div>
+      ` : ''}
+
+      ${hasSlides ? `
+        <div class="snavi-drawer-section">Laminas (${slides.length})</div>
+        <ul class="snavi-drawer-list">
+          ${slides.map((s, i) => {
+            const dims = formatDimensions(s.width, s.height);
+            return `
+            <li class="snavi-drawer-item" data-slide-id="${s.slideId}" style="--i:${i}">
+              ${s.thumbUrl
+                ? `<img class="snavi-drawer-thumb" src="${getThumbUrl(s.thumbUrl)}" alt="" />`
+                : `<div class="snavi-drawer-thumb"></div>`}
+              <div class="snavi-drawer-item-info">
+                <span class="snavi-drawer-label">${escapeHtml(formatSlideLabel(s, i))}</span>
+                <span class="snavi-drawer-sublabel">${dims || 'Abrir no viewer'}</span>
+              </div>
+              ${ICON.chevron}
+            </li>`;
+          }).join('')}
+        </ul>
+      ` : `
+        <div class="snavi-drawer-empty">
+          ${ICON.slide}
+          <span class="snavi-drawer-empty-text">
+            ${currentCaseBase
+              ? 'Nenhuma lamina encontrada para este caso.'
+              : 'Nenhum caso AP detectado nesta pagina.'}
+          </span>
+        </div>
+      `}
+    </div>
+    <div class="snavi-drawer-search-section">
+      <div class="snavi-drawer-search-label">Busca manual</div>
+      <div class="snavi-drawer-search-row">
+        <input class="snavi-drawer-input" type="text" placeholder="AP26000230"
+               value="${currentCaseBase || ''}" />
+        <button class="snavi-drawer-go">Buscar</button>
+      </div>
+    </div>
+    <div class="snavi-drawer-footer">
+      ${authInfo.user
+        ? `<div class="snavi-drawer-user">
+            ${authInfo.user.avatarUrl
+              ? `<img class="snavi-drawer-user-avatar" src="${escapeHtml(authInfo.user.avatarUrl)}" alt="" />`
+              : `<div class="snavi-drawer-user-icon">${ICON.user}</div>`}
+            <div class="snavi-drawer-user-info">
+              <span class="snavi-drawer-user-name">${escapeHtml(authInfo.user.name)}</span>
+              <span class="snavi-drawer-user-detail">${escapeHtml(authInfo.device?.name || '')}</span>
+            </div>
+            <span class="snavi-drawer-user-badge">Conectado</span>
+          </div>`
+        : `<div class="snavi-drawer-user">
+            <div class="snavi-drawer-user-icon">${ICON.user}</div>
+            <div class="snavi-drawer-user-info">
+              <span class="snavi-drawer-user-name">API Key</span>
+              <span class="snavi-drawer-user-detail">Modo legado</span>
+            </div>
+            <span class="snavi-drawer-user-badge">Conectado</span>
+          </div>`}
+    </div>
+  `;
+
+  drawerEl.querySelector('.snavi-drawer-close').addEventListener('click', closeDrawer);
+
+  drawerEl.querySelectorAll('.snavi-drawer-item').forEach(item => {
     item.addEventListener('click', () => {
-      const slideId = item.dataset.slideId;
-      requestViewerLink(slideId);
-      removePopover();
+      requestViewerLink(item.dataset.slideId);
     });
   });
 
-  // Manual search
-  const goBtn = popoverEl.querySelector('.snavi-popover-go');
-  const inputEl = popoverEl.querySelector('.snavi-popover-input');
+  const goBtn = drawerEl.querySelector('.snavi-drawer-go');
+  const inputEl = drawerEl.querySelector('.snavi-drawer-input');
   goBtn.addEventListener('click', () => {
     const val = inputEl.value.trim().toUpperCase();
     if (val && AP_PATTERN.test(val)) {
-      removePopover();
       onCaseChange(val.match(AP_PATTERN)[1]);
     }
   });
   inputEl.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') goBtn.click();
   });
+}
 
-  document.body.appendChild(popoverEl);
+function openDrawer() {
+  if (!drawerEl) createDrawer();
+  renderDrawerContent();
+  drawerOpen = true;
 
-  // Show with animation
   requestAnimationFrame(() => {
-    popoverEl.classList.add('snavi-popover--visible');
+    drawerEl.classList.add('snavi-drawer--open');
+    handleEl?.classList.add('snavi-handle--open');
   });
 
-  // Close on outside click (delayed to avoid immediate close)
   setTimeout(() => {
-    document.addEventListener('click', closePopoverOnOutside, { once: true });
+    document.addEventListener('click', closeDrawerOnOutside);
   }, 50);
 }
 
-function removePopover() {
-  if (popoverEl) {
-    popoverEl.remove();
-    popoverEl = null;
-  }
+function closeDrawer() {
+  if (!drawerEl) return;
+  drawerOpen = false;
+  drawerEl.classList.remove('snavi-drawer--open');
+  handleEl?.classList.remove('snavi-handle--open');
+  document.removeEventListener('click', closeDrawerOnOutside);
 }
 
-function togglePopover() {
-  if (popoverEl) {
-    removePopover();
-  } else {
-    const slides = currentStatus?.readySlides || [];
-    createPopover(slides);
-  }
+function toggleDrawer() {
+  drawerOpen ? closeDrawer() : openDrawer();
 }
 
-function closePopoverOnOutside(e) {
-  if (popoverEl && !popoverEl.contains(e.target) && !fabEl?.contains(e.target)) {
-    removePopover();
+function closeDrawerOnOutside(e) {
+  if (drawerEl && !drawerEl.contains(e.target) && !handleEl?.contains(e.target)) {
+    closeDrawer();
   }
 }
 
 // ============================================================================
-// Debug Toast
+// Toast
 // ============================================================================
 
 async function showDebugToast(message) {
@@ -232,29 +480,23 @@ async function showDebugToast(message) {
   if (!cfg.debug) return;
 
   removeToast();
-
   toastEl = document.createElement('div');
   toastEl.className = 'snavi-toast';
   toastEl.textContent = `[SuperNavi] ${message}`;
   document.body.appendChild(toastEl);
   requestAnimationFrame(() => toastEl.classList.add('snavi-toast--visible'));
-
   setTimeout(() => removeToast(), 4000);
 }
 
 function removeToast() {
-  if (toastEl) {
-    toastEl.remove();
-    toastEl = null;
-  }
+  if (toastEl) { toastEl.remove(); toastEl = null; }
 }
 
 // ============================================================================
-// Modal (link confirmation)
+// Modal
 // ============================================================================
 
 async function showLinkModal(candidate) {
-  // Check cooldown
   const cooldownKey = `dismissed:${currentCaseBase}`;
   const stored = await chromeStorageGet(cooldownKey);
   if (stored && Date.now() - stored < COOLDOWN_MS) return;
@@ -295,16 +537,11 @@ async function showLinkModal(candidate) {
   });
 
   document.body.appendChild(modalEl);
-  requestAnimationFrame(() => {
-    modalEl.classList.add('snavi-modal-overlay--visible');
-  });
+  requestAnimationFrame(() => modalEl.classList.add('snavi-modal-overlay--visible'));
 }
 
 function removeModal() {
-  if (modalEl) {
-    modalEl.remove();
-    modalEl = null;
-  }
+  if (modalEl) { modalEl.remove(); modalEl = null; }
 }
 
 // ============================================================================
@@ -316,7 +553,6 @@ function requestCaseStatus(caseBase) {
 }
 
 function requestViewerLink(slideId) {
-  // Debounce to prevent multiple tabs
   if (debounceTimer) return;
   debounceTimer = setTimeout(() => { debounceTimer = null; }, 2000);
 
@@ -324,28 +560,59 @@ function requestViewerLink(slideId) {
     type: 'REQUEST_VIEWER_LINK',
     slideId,
     externalCaseId: currentCaseBase ? `pathoweb:${currentCaseBase}` : undefined,
+    patientData: currentPatientData || undefined,
   });
 }
 
+function requestAuthInfo() {
+  chrome.runtime.sendMessage({ type: 'GET_AUTH_INFO' });
+}
+
 chrome.runtime.onMessage.addListener((msg) => {
+  if (msg.type === 'AUTH_INFO') {
+    const wasAuthenticated = authInfo?.authenticated;
+    authInfo = msg;
+    // Clear config cache so new token is used
+    configCache = null;
+    if (drawerOpen) renderDrawerContent();
+
+    // Just paired — fetch case status now that we have credentials
+    if (!wasAuthenticated && msg.authenticated && currentCaseBase) {
+      requestCaseStatus(currentCaseBase);
+    }
+  }
+  if (msg.type === 'PAIRING_RESULT') {
+    if (msg.success) {
+      // Auth info update will re-render the drawer automatically
+      showDebugToast(`Pareado: ${msg.deviceName}`);
+    } else {
+      // Show error in pairing form
+      const feedbackEl = drawerEl?.querySelector('.snavi-pair-feedback');
+      if (feedbackEl) {
+        feedbackEl.textContent = msg.error || 'Erro ao parear';
+        feedbackEl.classList.add('snavi-pair-feedback--error');
+      }
+      const btn = drawerEl?.querySelector('.snavi-pair-btn');
+      if (btn) {
+        btn.disabled = false;
+        btn.classList.remove('snavi-pair-btn--loading');
+        btn.querySelector('.snavi-pair-btn-text').textContent = 'Conectar';
+      }
+    }
+  }
   if (msg.type === 'CASE_STATUS') {
     currentStatus = msg;
     handleStatusUpdate(msg);
   }
-
   if (msg.type === 'CASE_STATUS_ERROR') {
     showDebugToast(`API error: ${msg.error}`);
-    removeFAB();
+    // Don't remove handle — keep it so user can open drawer to pair
   }
-
   if (msg.type === 'VIEWER_LINK') {
     window.open(msg.url, '_blank');
   }
-
-  if (msg.type === 'ATTACH_RESULT') {
-    if (msg.success) {
-      chrome.runtime.sendMessage({ type: 'REFRESH_STATUS', caseBase: currentCaseBase });
-    }
+  if (msg.type === 'ATTACH_RESULT' && msg.success) {
+    chrome.runtime.sendMessage({ type: 'REFRESH_STATUS', caseBase: currentCaseBase });
   }
 });
 
@@ -358,46 +625,42 @@ function handleStatusUpdate(status) {
   const hasProcessing = status.processingSlides?.length > 0;
   const hasCandidates = status.unconfirmedCandidates?.length > 0;
 
+  // Handle is always present — just update its state
+  createHandle();
   if (hasReady || hasProcessing) {
-    createFAB();
-    updateFABState(status);
-  } else {
-    removeFAB();
+    updateHandleState(status);
   }
+  if (drawerOpen) renderDrawerContent();
 
-  // Show modal for unconfirmed candidates only when no ready slides
   if (!hasReady && hasCandidates) {
     const best = status.unconfirmedCandidates[0];
-    if (best.score >= 0.85) {
-      showLinkModal(best);
-    }
+    if (best.score >= 0.85) showLinkModal(best);
   }
 }
 
 function onCaseChange(newCaseBase) {
   if (newCaseBase === currentCaseBase) return;
-
   currentCaseBase = newCaseBase;
   currentStatus = null;
-  removeFAB();
-  removePopover();
   removeModal();
-
-  if (currentCaseBase) {
+  // Toggle handle active state (gray → navy when case detected)
+  if (handleEl) {
+    handleEl.classList.toggle('snavi-handle--active', !!currentCaseBase);
+  }
+  if (drawerOpen) renderDrawerContent();
+  if (currentCaseBase && authInfo?.authenticated) {
     requestCaseStatus(currentCaseBase);
   }
 }
 
 // ============================================================================
-// Navigation Observation (SPA support)
+// Navigation Observer
 // ============================================================================
 
 function startObserver() {
   const observer = new MutationObserver(() => {
     const detected = detectCaseBase();
-    if (detected !== currentCaseBase) {
-      onCaseChange(detected);
-    }
+    if (detected !== currentCaseBase) onCaseChange(detected);
   });
 
   observer.observe(document.body, {
@@ -406,12 +669,9 @@ function startObserver() {
     characterData: true,
   });
 
-  // Also poll as fallback
   setInterval(() => {
     const detected = detectCaseBase();
-    if (detected !== currentCaseBase) {
-      onCaseChange(detected);
-    }
+    if (detected !== currentCaseBase) onCaseChange(detected);
   }, POLL_INTERVAL_MS);
 }
 
@@ -425,15 +685,22 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-/**
- * Resolve thumb URL. Uses cached config (sync) since it's called in template strings.
- * Config is always loaded before any UI rendering (init() calls getConfig() first).
- */
 function getThumbUrl(path) {
   if (!path) return '';
   if (path.startsWith('http')) return path;
   const base = configCache?.apiBaseUrl || 'http://localhost:3001';
   return `${base}${path}`;
+}
+
+function formatSlideLabel(slide, index) {
+  const label = slide.label || String(index + 1);
+  return `Lamina ${label}`;
+}
+
+function formatDimensions(w, h) {
+  if (!w || !h) return null;
+  const fmt = (n) => n >= 1000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k` : String(n);
+  return `${fmt(w)} × ${fmt(h)} px`;
 }
 
 async function chromeStorageGet(key) {
@@ -453,20 +720,31 @@ async function chromeStorageSet(key, value) {
 // ============================================================================
 
 async function init() {
-  // Pre-fetch config so getThumbUrl sync works
   await getConfig();
+
+  // Always show handle so user can open drawer (even if not authenticated)
+  createHandle();
+  requestAuthInfo();
 
   const detected = detectCaseBase();
   if (detected) {
     currentCaseBase = detected;
-    requestCaseStatus(detected);
-  } else {
-    showDebugToast('Nenhum caso AP detectado nesta pagina');
+    // Activate handle (gray → navy)
+    if (handleEl) handleEl.classList.add('snavi-handle--active');
+    // Only fetch case status after auth info arrives (see AUTH_INFO handler)
+    // If already configured, try now
+    const cfg = await getConfig();
+    if (cfg.deviceToken || cfg.apiKey) {
+      requestCaseStatus(detected);
+    }
   }
+
+  // Scrape patient data (AJAX-loaded, so retry a few times)
+  scrapePatientDataWithRetry();
+
   startObserver();
 }
 
-// Wait for DOM to be ready
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', init);
 } else {

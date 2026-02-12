@@ -15,6 +15,7 @@ async function getConfig() {
   const result = await chrome.storage.sync.get({
     apiBaseUrl: 'http://localhost:3001',
     apiKey: '',
+    deviceToken: '',
     debug: false,
   });
   return result;
@@ -31,18 +32,27 @@ function log(...args) {
  */
 async function apiCall(path, options = {}) {
   const config = await getConfig();
-  if (!config.apiKey) {
-    throw new Error('API key not configured');
+
+  if (!config.deviceToken && !config.apiKey) {
+    throw new Error('Not configured: pair the device or set an API key');
   }
 
   const url = `${config.apiBaseUrl}${path}`;
   log('API call:', options.method || 'GET', url);
 
+  // Dual-mode auth: prefer device token over legacy API key
+  const authHeaders = {};
+  if (config.deviceToken) {
+    authHeaders['x-device-token'] = config.deviceToken;
+  } else if (config.apiKey) {
+    authHeaders['x-supernavi-key'] = config.apiKey;
+  }
+
   const response = await fetch(url, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
-      'x-supernavi-key': config.apiKey,
+      ...authHeaders,
       ...(options.headers || {}),
     },
   });
@@ -73,10 +83,94 @@ async function getCaseStatus(caseBase) {
 }
 
 /**
+ * Get extension auth info (device + user)
+ */
+async function getAuthInfo() {
+  try {
+    return await apiCall('/api/ui-bridge/me');
+  } catch (err) {
+    log('Auth info error:', err.message);
+    return { authenticated: false, device: null, user: null };
+  }
+}
+
+/**
  * Handle messages from content script
  */
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   const tabId = sender.tab?.id;
+
+  if (msg.type === 'GET_AUTH_INFO') {
+    getAuthInfo()
+      .then(data => {
+        if (tabId) {
+          chrome.tabs.sendMessage(tabId, { type: 'AUTH_INFO', ...data });
+        }
+      })
+      .catch(err => {
+        log('Auth info error:', err.message);
+        if (tabId) {
+          chrome.tabs.sendMessage(tabId, { type: 'AUTH_INFO', authenticated: false });
+        }
+      });
+    return true;
+  }
+
+  if (msg.type === 'CLAIM_PAIRING_CODE') {
+    const { code } = msg;
+    log('Claiming pairing code:', code);
+
+    (async () => {
+      try {
+        const config = await getConfig();
+        const url = `${config.apiBaseUrl}/api/ui-bridge/pairing/claim`;
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code }),
+        });
+
+        if (!response.ok) {
+          const text = await response.text().catch(() => '');
+          const errorMsg = response.status === 404 ? 'Codigo invalido'
+            : response.status === 410 ? 'Codigo expirado ou ja usado'
+            : `Erro ${response.status}`;
+          if (tabId) {
+            chrome.tabs.sendMessage(tabId, { type: 'PAIRING_RESULT', success: false, error: errorMsg });
+          }
+          return;
+        }
+
+        const data = await response.json();
+
+        // Store device credentials
+        await chrome.storage.sync.set({
+          deviceToken: data.deviceToken,
+          deviceId: data.deviceId,
+          deviceName: data.deviceName,
+        });
+
+        log('Device paired:', data.deviceName);
+
+        if (tabId) {
+          chrome.tabs.sendMessage(tabId, { type: 'PAIRING_RESULT', success: true, deviceName: data.deviceName });
+        }
+
+        // Fetch and send updated auth info
+        const authData = await getAuthInfo();
+        if (tabId) {
+          chrome.tabs.sendMessage(tabId, { type: 'AUTH_INFO', ...authData });
+        }
+      } catch (err) {
+        log('Pairing error:', err.message);
+        if (tabId) {
+          chrome.tabs.sendMessage(tabId, { type: 'PAIRING_RESULT', success: false, error: 'Erro de conexao' });
+        }
+      }
+    })();
+
+    return true;
+  }
 
   if (msg.type === 'CASE_DETECTED') {
     log('Case detected:', msg.caseBase);
@@ -113,16 +207,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       body: JSON.stringify({
         slideId: msg.slideId,
         externalCaseId: msg.externalCaseId,
+        patientData: msg.patientData || undefined,
       }),
     })
       .then(data => {
-        if (tabId) {
-          chrome.tabs.sendMessage(tabId, {
-            type: 'VIEWER_LINK',
-            url: data.url,
-            slideId: msg.slideId,
-          });
-        }
+        // Open viewer in new tab directly from background (avoids popup blocker)
+        chrome.tabs.create({ url: data.url });
       })
       .catch(err => {
         log('Viewer link error:', err.message);

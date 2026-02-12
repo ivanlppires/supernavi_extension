@@ -140,6 +140,10 @@
       background: #e5e5ea;
       color: #1d1d1f;
     }
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
     .status {
       text-align: center;
       font-size: 13px;
@@ -148,6 +152,60 @@
     }
     .status--success { color: #34C759; }
     .status--error { color: #FF3B30; }
+
+    /* Pairing-specific styles */
+    .pairing-code-input {
+      font-family: 'SF Mono', 'Menlo', 'Monaco', monospace;
+      font-size: 20px;
+      letter-spacing: 4px;
+      text-align: center;
+      text-transform: uppercase;
+    }
+    .paired-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+    .paired-status--active {
+      background: #f0faf0;
+      color: #248a3d;
+    }
+    .paired-status--inactive {
+      background: #fef2f2;
+      color: #d70015;
+    }
+    .paired-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .paired-dot--green { background: #34C759; }
+    .paired-dot--red { background: #FF3B30; }
+
+    /* Accordion for legacy settings */
+    details {
+      margin-bottom: 16px;
+    }
+    details summary {
+      font-size: 13px;
+      font-weight: 600;
+      color: #86868b;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      cursor: pointer;
+      padding: 12px 0;
+      user-select: none;
+    }
+    details summary:hover {
+      color: #6e6e73;
+    }
+    details[open] summary {
+      margin-bottom: 12px;
+    }
   </style>
 </head>
 <body>
@@ -155,22 +213,59 @@
     <h1>SuperNavi</h1>
     <p class="subtitle">Configuracoes da extensao PathoWeb Bridge</p>
 
+    <!-- Pairing Card (Primary) -->
     <div class="card">
-      <div class="card-title">Conexao</div>
-      <div class="field">
-        <label for="apiBaseUrl">URL do servidor SuperNavi</label>
-        <input type="url" id="apiBaseUrl" placeholder="http://localhost:3001">
-        <div class="field-hint">Endereco do servidor UI-Bridge</div>
+      <div class="card-title">Pareamento</div>
+
+      <!-- Paired status indicator -->
+      <div id="pairedStatus" style="display:none;" class="paired-status paired-status--active">
+        <span class="paired-dot paired-dot--green"></span>
+        <span id="pairedName">Pareado</span>
       </div>
-      <div class="field">
-        <label for="apiKey">Chave de API</label>
-        <input type="password" id="apiKey" placeholder="Insira a chave de API">
-        <div class="field-hint">Chave configurada no servidor (UI_BRIDGE_API_KEY)</div>
+
+      <!-- Pairing form (shown when not paired) -->
+      <div id="pairingForm">
+        <div class="field">
+          <label for="pairServerUrl">URL do servidor SuperNavi</label>
+          <input type="url" id="pairServerUrl" placeholder="http://localhost:3001">
+          <div class="field-hint">Endereco do servidor cloud</div>
+        </div>
+        <div class="field">
+          <label for="pairCode">Codigo de pareamento</label>
+          <input type="text" id="pairCode" class="pairing-code-input" placeholder="ABC123" maxlength="6" autocomplete="off">
+          <div class="field-hint">Codigo de 6 caracteres gerado pelo admin em /pair</div>
+        </div>
+        <div style="margin-top:12px;">
+          <button class="btn btn-primary" id="pairBtn" style="width:100%;">Parear</button>
+        </div>
+      </div>
+
+      <!-- Unpair button (shown when paired) -->
+      <div id="unpairSection" style="display:none;margin-top:12px;">
+        <button class="btn btn-secondary" id="unpairBtn" style="width:100%;">Desconectar dispositivo</button>
       </div>
     </div>
 
+    <!-- Advanced / Legacy (Accordion) -->
     <div class="card">
-      <div class="card-title">Avancado</div>
+      <details>
+        <summary>Configuracao manual (legado)</summary>
+        <div class="field">
+          <label for="apiBaseUrl">URL do servidor SuperNavi</label>
+          <input type="url" id="apiBaseUrl" placeholder="http://localhost:3001">
+          <div class="field-hint">Endereco do servidor UI-Bridge</div>
+        </div>
+        <div class="field">
+          <label for="apiKey">Chave de API</label>
+          <input type="password" id="apiKey" placeholder="Insira a chave de API">
+          <div class="field-hint">Chave configurada no servidor (UI_BRIDGE_API_KEY)</div>
+        </div>
+      </details>
+    </div>
+
+    <!-- Settings Card -->
+    <div class="card">
+      <div class="card-title">Configuracoes</div>
       <div class="field">
         <div class="toggle-row">
           <span class="toggle-label">Modo debug</span>
@@ -180,19 +275,6 @@
           </label>
         </div>
         <div class="field-hint">Exibe logs detalhados no console do navegador</div>
-      </div>
-      <div class="field">
-        <label>Posicao do botao (FAB)</label>
-        <div style="display:flex;gap:12px;">
-          <div style="flex:1;">
-            <input type="number" id="fabRight" placeholder="18" min="0" max="500" style="width:100%;">
-            <div class="field-hint">Direita (px)</div>
-          </div>
-          <div style="flex:1;">
-            <input type="number" id="fabBottom" placeholder="88" min="0" max="500" style="width:100%;">
-            <div class="field-hint">Inferior (px)</div>
-          </div>
-        </div>
       </div>
     </div>
 
