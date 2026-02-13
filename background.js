@@ -13,7 +13,7 @@ const CACHE_TTL_MS = 30_000;
  */
 async function getConfig() {
   const result = await chrome.storage.sync.get({
-    apiBaseUrl: 'http://localhost:3001',
+    apiBaseUrl: 'https://cloud.supernavi.app',
     apiKey: '',
     deviceToken: '',
     debug: false,

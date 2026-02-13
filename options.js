@@ -24,7 +24,7 @@ const statusEl = document.getElementById('status');
 
 // Load saved settings
 chrome.storage.sync.get({
-  apiBaseUrl: 'http://localhost:3001',
+  apiBaseUrl: 'https://cloud.supernavi.app',
   apiKey: '',
   deviceToken: '',
   deviceId: '',
@@ -162,7 +162,7 @@ testBtn.addEventListener('click', async () => {
   // Determine which auth method to use
   const config = await new Promise(resolve => {
     chrome.storage.sync.get({
-      apiBaseUrl: 'http://localhost:3001',
+      apiBaseUrl: 'https://cloud.supernavi.app',
       apiKey: '',
       deviceToken: '',
     }, resolve);

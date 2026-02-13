@@ -59,7 +59,7 @@ async function getConfig() {
   if (configCache) return configCache;
   return new Promise(resolve => {
     chrome.storage.sync.get({
-      apiBaseUrl: 'http://localhost:3001',
+      apiBaseUrl: 'https://cloud.supernavi.app',
       debug: false,
     }, result => {
       configCache = result;
@@ -249,7 +249,7 @@ function renderPairingView() {
       <div class="snavi-pair-steps">
         <div class="snavi-pair-step">
           <span class="snavi-pair-step-num">1</span>
-          <span class="snavi-pair-step-text">Abra <a href="http://localhost:3002/pair" target="_blank" class="snavi-pair-link">supernavi.app/pair</a></span>
+          <span class="snavi-pair-step-text">Abra <a href="https://viewer.supernavi.app/pair" target="_blank" class="snavi-pair-link">viewer.supernavi.app/pair</a></span>
         </div>
         <div class="snavi-pair-step">
           <span class="snavi-pair-step-num">2</span>
@@ -688,7 +688,7 @@ function escapeHtml(str) {
 function getThumbUrl(path) {
   if (!path) return '';
   if (path.startsWith('http')) return path;
-  const base = configCache?.apiBaseUrl || 'http://localhost:3001';
+  const base = configCache?.apiBaseUrl || 'https://cloud.supernavi.app';
   return `${base}${path}`;
 }
 
