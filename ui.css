@@ -133,6 +133,12 @@
   gap: 8px;
 }
 
+.snavi-drawer-logo {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+}
+
 .snavi-drawer-title {
   font-family: var(--sn-font);
   font-size: 17px;

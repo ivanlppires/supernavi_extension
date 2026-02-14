@@ -241,6 +241,7 @@ function renderPairingView() {
   drawerEl.innerHTML = `
     <div class="snavi-drawer-header">
       <div class="snavi-drawer-brand">
+        <img class="snavi-drawer-logo" src="${chrome.runtime.getURL('icons/icon48.png')}" alt="" />
         <span class="snavi-drawer-title">SuperNavi</span>
         ${statusCls ? `<span class="snavi-drawer-status ${statusCls}"></span>` : ''}
       </div>
@@ -350,6 +351,7 @@ function renderAuthenticatedView() {
   drawerEl.innerHTML = `
     <div class="snavi-drawer-header">
       <div class="snavi-drawer-brand">
+        <img class="snavi-drawer-logo" src="${chrome.runtime.getURL('icons/icon48.png')}" alt="" />
         <span class="snavi-drawer-title">SuperNavi</span>
         ${statusCls ? `<span class="snavi-drawer-status ${statusCls}"></span>` : ''}
       </div>
