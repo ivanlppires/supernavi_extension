@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "SuperNavi - PathoWeb Bridge",
   "version": "1.0.0",
-  "description": "Integra SuperNavi com PathoWeb para visualizacao rapida de laminas digitalizadas",
+  "description": "Integra SuperNavi com PathoWeb para visualizacao rapida de lâminas digitalizadas",
   "permissions": ["storage", "activeTab"],
   "host_permissions": [
     "https://pathoweb.com.br/*",

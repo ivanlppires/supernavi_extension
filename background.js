@@ -255,6 +255,31 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
+  if (msg.type === 'GET_UNLINKED_SLIDES') {
+    log('Fetching unlinked slides');
+
+    apiCall('/api/ui-bridge/slides/unlinked')
+      .then(data => {
+        if (tabId) {
+          chrome.tabs.sendMessage(tabId, {
+            type: 'UNLINKED_SLIDES',
+            slides: data.slides || [],
+          });
+        }
+      })
+      .catch(err => {
+        log('Unlinked slides error:', err.message);
+        if (tabId) {
+          chrome.tabs.sendMessage(tabId, {
+            type: 'UNLINKED_SLIDES',
+            slides: [],
+          });
+        }
+      });
+
+    return true;
+  }
+
   if (msg.type === 'REFRESH_STATUS') {
     // Force cache invalidation and re-fetch
     statusCache.delete(msg.caseBase?.toUpperCase());

@@ -18,6 +18,7 @@ let drawerEl = null;
 let drawerOpen = false;
 let modalEl = null;
 let toastEl = null;
+let unlinkedSlides = null; // cached unlinked slides from cloud
 let debounceTimer = null;
 let configCache = null;
 
@@ -184,7 +185,7 @@ function removeHandle() {
 function updateHandleState(status) {
   if (!handleEl) return;
   if (status.readySlides?.length > 0) {
-    handleEl.title = `SuperNavi: ${status.readySlides.length} lamina(s) pronta(s)`;
+    handleEl.title = `SuperNavi: ${status.readySlides.length} lâmina(s) pronta(s)`;
   } else if (status.processingSlides?.length > 0) {
     handleEl.title = 'SuperNavi: Preparando...';
   }
@@ -224,6 +225,11 @@ function renderDrawerContent() {
 
   // ── Authenticated: normal slide drawer ──
   renderAuthenticatedView();
+
+  // Fetch unlinked slides if not cached yet
+  if (unlinkedSlides === null) {
+    chrome.runtime.sendMessage({ type: 'GET_UNLINKED_SLIDES' });
+  }
 }
 
 function renderPairingView() {
@@ -243,7 +249,7 @@ function renderPairingView() {
           <div class="snavi-pair-icon">${ICON.link}</div>
         </div>
         <h2 class="snavi-pair-title">Conectar dispositivo</h2>
-        <p class="snavi-pair-desc">Vincule esta extensao a sua conta SuperNavi para visualizar laminas diretamente do PathoWeb.</p>
+        <p class="snavi-pair-desc">Vincule esta extensao a sua conta SuperNavi para visualizar lâminas diretamente do PathoWeb.</p>
       </div>
 
       <div class="snavi-pair-steps">
@@ -358,7 +364,7 @@ function renderAuthenticatedView() {
       ` : ''}
 
       ${hasSlides ? `
-        <div class="snavi-drawer-section">Laminas (${slides.length})</div>
+        <div class="snavi-drawer-section">Lâminas (${slides.length})</div>
         <ul class="snavi-drawer-list">
           ${slides.map((s, i) => {
             const dims = formatDimensions(s.width, s.height);
@@ -376,14 +382,37 @@ function renderAuthenticatedView() {
           }).join('')}
         </ul>
       ` : `
-        <div class="snavi-drawer-empty">
-          ${ICON.slide}
-          <span class="snavi-drawer-empty-text">
-            ${currentCaseBase
-              ? 'Nenhuma lamina encontrada para este caso.'
-              : 'Nenhum caso AP detectado nesta pagina.'}
-          </span>
-        </div>
+        ${unlinkedSlides && unlinkedSlides.length > 0 ? `
+          <div class="snavi-drawer-section">Lâminas sem caso (${unlinkedSlides.length})</div>
+          <ul class="snavi-drawer-list">
+            ${unlinkedSlides.map((s, i) => {
+              const dims = formatDimensions(s.width, s.height);
+              const date = formatRelativeDate(s.createdAt);
+              return `
+              <li class="snavi-drawer-item snavi-drawer-item--unlinked" data-unlinked-slide-id="${s.slideId}" style="--i:${i}">
+                ${s.thumbUrl
+                  ? `<img class="snavi-drawer-thumb" src="${getThumbUrl(s.thumbUrl)}" alt="" />`
+                  : `<div class="snavi-drawer-thumb"></div>`}
+                <div class="snavi-drawer-item-info">
+                  <span class="snavi-drawer-label">${escapeHtml(s.filename)}</span>
+                  <span class="snavi-drawer-sublabel">${[dims, date].filter(Boolean).join(' · ')}</span>
+                </div>
+                ${currentCaseBase
+                  ? `<button class="snavi-drawer-link-btn" data-link-slide-id="${s.slideId}">Vincular</button>`
+                  : ''}
+              </li>`;
+            }).join('')}
+          </ul>
+        ` : `
+          <div class="snavi-drawer-empty">
+            ${ICON.slide}
+            <span class="snavi-drawer-empty-text">
+              ${currentCaseBase
+                ? 'Nenhuma lâmina encontrada para este caso.'
+                : 'Nenhum caso AP detectado nesta pagina.'}
+            </span>
+          </div>
+        `}
       `}
     </div>
     <div class="snavi-drawer-search-section">
@@ -419,9 +448,20 @@ function renderAuthenticatedView() {
 
   drawerEl.querySelector('.snavi-drawer-close').addEventListener('click', closeDrawer);
 
-  drawerEl.querySelectorAll('.snavi-drawer-item').forEach(item => {
+  drawerEl.querySelectorAll('.snavi-drawer-item[data-slide-id]').forEach(item => {
     item.addEventListener('click', () => {
       requestViewerLink(item.dataset.slideId);
+    });
+  });
+
+  drawerEl.querySelectorAll('.snavi-drawer-link-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const slideId = btn.dataset.linkSlideId;
+      if (!slideId || !currentCaseBase) return;
+      btn.disabled = true;
+      btn.textContent = '...';
+      chrome.runtime.sendMessage({ type: 'ATTACH_SLIDE', slideId, caseBase: currentCaseBase });
     });
   });
 
@@ -508,9 +548,9 @@ async function showLinkModal(candidate) {
   modalEl.innerHTML = `
     <div class="snavi-modal">
       <div class="snavi-modal-body">
-        <h3 class="snavi-modal-title">Lamina encontrada</h3>
+        <h3 class="snavi-modal-title">Lâmina encontrada</h3>
         <p class="snavi-modal-text">
-          Encontramos uma lamina recente compativel com este caso. Vincular agora?
+          Encontramos uma lâmina recente compatível com este caso. Vincular agora?
         </p>
         ${candidate.thumbUrl ? `<img class="snavi-modal-thumb" src="${getThumbUrl(candidate.thumbUrl)}" alt="Preview" />` : ''}
         <p class="snavi-modal-filename">${escapeHtml(candidate.filename)}</p>
@@ -611,8 +651,14 @@ chrome.runtime.onMessage.addListener((msg) => {
   if (msg.type === 'VIEWER_LINK') {
     window.open(msg.url, '_blank');
   }
+  if (msg.type === 'UNLINKED_SLIDES') {
+    unlinkedSlides = msg.slides || [];
+    if (drawerOpen) renderDrawerContent();
+  }
   if (msg.type === 'ATTACH_RESULT' && msg.success) {
+    unlinkedSlides = null; // invalidate cache
     chrome.runtime.sendMessage({ type: 'REFRESH_STATUS', caseBase: currentCaseBase });
+    chrome.runtime.sendMessage({ type: 'GET_UNLINKED_SLIDES' });
   }
 });
 
@@ -694,13 +740,26 @@ function getThumbUrl(path) {
 
 function formatSlideLabel(slide, index) {
   const label = slide.label || String(index + 1);
-  return `Lamina ${label}`;
+  return `Lâmina ${label}`;
 }
 
 function formatDimensions(w, h) {
   if (!w || !h) return null;
   const fmt = (n) => n >= 1000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k` : String(n);
   return `${fmt(w)} × ${fmt(h)} px`;
+}
+
+function formatRelativeDate(isoStr) {
+  if (!isoStr) return '';
+  const diff = Date.now() - new Date(isoStr).getTime();
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return 'agora';
+  if (min < 60) return `${min}min`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h`;
+  const days = Math.floor(hr / 24);
+  if (days === 1) return 'ontem';
+  return `${days}d`;
 }
 
 async function chromeStorageGet(key) {

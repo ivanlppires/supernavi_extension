@@ -375,6 +375,42 @@
   color: var(--sn-text-secondary);
 }
 
+/* Unlinked slide items */
+.snavi-drawer-item--unlinked {
+  cursor: default;
+}
+
+.snavi-drawer-link-btn {
+  font-family: var(--sn-font);
+  font-size: 12px;
+  font-weight: 600;
+  color: #007AFF;
+  background: transparent;
+  border: 1.5px solid #007AFF;
+  border-radius: 14px;
+  padding: 4px 12px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+  line-height: 1.2;
+}
+
+.snavi-drawer-link-btn:hover {
+  background: #007AFF;
+  color: #fff;
+}
+
+.snavi-drawer-link-btn:active {
+  background: #0062CC;
+  border-color: #0062CC;
+  color: #fff;
+}
+
+.snavi-drawer-link-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 /* Empty state */
 .snavi-drawer-empty {
   padding: 48px 28px;
