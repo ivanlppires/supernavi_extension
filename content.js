@@ -388,17 +388,17 @@ function renderAuthenticatedView() {
             ${unlinkedSlides.map((s, i) => {
               const dims = formatDimensions(s.width, s.height);
               const date = formatRelativeDate(s.createdAt);
+              const dotIdx = s.filename.lastIndexOf('.');
+              const name = dotIdx > 0 ? s.filename.substring(0, dotIdx) : s.filename;
+              const ext = dotIdx > 0 ? s.filename.substring(dotIdx) : '';
               return `
               <div class="snavi-unlinked-card" style="--i:${i}">
                 ${s.thumbUrl
                   ? `<img class="snavi-unlinked-thumb" src="${getThumbUrl(s.thumbUrl)}" alt="" />`
                   : `<div class="snavi-unlinked-thumb"></div>`}
                 <div class="snavi-unlinked-body">
-                  <span class="snavi-unlinked-filename">${escapeHtml(s.filename)}</span>
-                  <div class="snavi-unlinked-meta">
-                    ${dims ? `<span>${dims}</span>` : ''}
-                    ${date ? `<span>${date}</span>` : ''}
-                  </div>
+                  <span class="snavi-unlinked-filename">${escapeHtml(name)}</span>
+                  <span class="snavi-unlinked-meta">${[ext, dims, date].filter(Boolean).join(' · ')}</span>
                 </div>
                 ${currentCaseBase
                   ? `<button class="snavi-drawer-link-btn" data-link-slide-id="${s.slideId}">Vincular</button>`

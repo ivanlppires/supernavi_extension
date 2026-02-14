@@ -417,19 +417,21 @@
   font-size: 12px;
   font-weight: 500;
   color: var(--sn-text);
-  line-height: 1.35;
+  line-height: 1.25;
   display: block;
-  word-break: break-all;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .snavi-unlinked-meta {
-  display: flex;
-  gap: 8px;
-  margin-top: 4px;
+  display: block;
+  margin-top: 3px;
   font-family: var(--sn-font);
   font-size: 11px;
   color: var(--sn-text-muted);
   line-height: 1;
+  white-space: nowrap;
 }
 
 .snavi-drawer-link-btn {
