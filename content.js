@@ -743,9 +743,16 @@ function getThumbUrl(path) {
   return `${base}${path}`;
 }
 
-function formatSlideLabel(slide, index) {
-  const label = slide.label || String(index + 1);
-  return `Lâmina ${label}`;
+function formatSlideLabel(slide) {
+  // If slide has a parsed label (e.g. "1" from AP26000230-1.svs), use it
+  if (slide.label) return `Lâmina ${slide.label}`;
+  // Otherwise show filename without extension
+  if (slide.filename) {
+    const dotIdx = slide.filename.lastIndexOf('.');
+    return dotIdx > 0 ? slide.filename.substring(0, dotIdx) : slide.filename;
+  }
+  // Fallback to sequential number
+  return `Lâmina ${slide.index || (index + 1)}`;
 }
 
 function formatDimensions(w, h) {
