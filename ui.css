@@ -524,12 +524,46 @@
 }
 
 /* ========================================
-   Search footer
+   Search toggle
+   ======================================== */
+.snavi-search-toggle {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 8px;
+  background: var(--sn-surface);
+  color: var(--sn-text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, color 0.15s ease;
+  padding: 0;
+}
+
+.snavi-search-toggle svg {
+  width: 14px;
+  height: 14px;
+}
+
+.snavi-search-toggle:hover {
+  background: var(--sn-separator);
+  color: var(--sn-text);
+}
+
+/* ========================================
+   Search section (collapsible)
    ======================================== */
 .snavi-drawer-search-section {
   flex-shrink: 0;
   padding: 8px 14px 10px;
   border-top: 1px solid var(--sn-separator);
+  transition: all 0.2s ease;
+}
+
+.snavi-drawer-search-section.snavi-hidden {
+  display: none;
 }
 
 .snavi-drawer-search-row {

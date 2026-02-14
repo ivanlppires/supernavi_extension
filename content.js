@@ -43,6 +43,9 @@ const ICON = {
   user: `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
     <circle cx="8" cy="5.5" r="2.5"/><path d="M3 14c0-2.8 2.2-5 5-5s5 2.2 5 5"/>
   </svg>`,
+  search: `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+    <circle cx="7" cy="7" r="4.5"/><line x1="10.2" y1="10.2" x2="13.5" y2="13.5"/>
+  </svg>`,
   link: `<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
     <path d="M16.5 23.5a6.5 6.5 0 009.2 0l4-4a6.5 6.5 0 00-9.2-9.2l-2 2"/>
     <path d="M23.5 16.5a6.5 6.5 0 00-9.2 0l-4 4a6.5 6.5 0 009.2 9.2l2-2"/>
@@ -421,9 +424,9 @@ function renderAuthenticatedView() {
         </div>
       ` : ''}
     </div>
-    <div class="snavi-drawer-search-section">
+    <div class="snavi-drawer-search-section snavi-hidden">
       <div class="snavi-drawer-search-row">
-        <input class="snavi-drawer-input" type="text" placeholder="Buscar caso... ex: AP26000230"
+        <input class="snavi-drawer-input" type="text" placeholder="Ex: AP26000230"
                value="${currentCaseBase || ''}" />
         <button class="snavi-drawer-go">Ir</button>
       </div>
@@ -438,7 +441,7 @@ function renderAuthenticatedView() {
               <span class="snavi-drawer-user-name">${escapeHtml(authInfo.user.name)}</span>
               <span class="snavi-drawer-user-detail">${escapeHtml(authInfo.device?.name || '')}</span>
             </div>
-            <span class="snavi-drawer-user-badge">Conectado</span>
+            <button class="snavi-search-toggle" title="Buscar caso">${ICON.search}</button>
           </div>`
         : `<div class="snavi-drawer-user">
             <div class="snavi-drawer-user-icon">${ICON.user}</div>
@@ -446,7 +449,7 @@ function renderAuthenticatedView() {
               <span class="snavi-drawer-user-name">API Key</span>
               <span class="snavi-drawer-user-detail">Modo legado</span>
             </div>
-            <span class="snavi-drawer-user-badge">Conectado</span>
+            <button class="snavi-search-toggle" title="Buscar caso">${ICON.search}</button>
           </div>`}
     </div>
   `;
@@ -479,6 +482,15 @@ function renderAuthenticatedView() {
       btn.textContent = '...';
       chrome.runtime.sendMessage({ type: 'ATTACH_SLIDE', slideId, caseBase: currentCaseBase });
     });
+  });
+
+  const searchSection = drawerEl.querySelector('.snavi-drawer-search-section');
+  const searchToggle = drawerEl.querySelector('.snavi-search-toggle');
+  searchToggle?.addEventListener('click', () => {
+    searchSection.classList.toggle('snavi-hidden');
+    if (!searchSection.classList.contains('snavi-hidden')) {
+      searchSection.querySelector('.snavi-drawer-input')?.focus();
+    }
   });
 
   const goBtn = drawerEl.querySelector('.snavi-drawer-go');
