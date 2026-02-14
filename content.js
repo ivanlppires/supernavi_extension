@@ -377,6 +377,7 @@ function renderAuthenticatedView() {
                 <span class="snavi-drawer-label">${escapeHtml(formatSlideLabel(s, i))}</span>
                 <span class="snavi-drawer-sublabel">${dims || 'Abrir no viewer'}</span>
               </div>
+              <button class="snavi-detach-btn" data-detach-slide-id="${s.slideId}" title="Desvincular">✕</button>
               ${ICON.chevron}
             </li>`;
           }).join('')}
@@ -421,11 +422,10 @@ function renderAuthenticatedView() {
       ` : ''}
     </div>
     <div class="snavi-drawer-search-section">
-      <div class="snavi-drawer-search-label">Busca manual</div>
       <div class="snavi-drawer-search-row">
-        <input class="snavi-drawer-input" type="text" placeholder="AP26000230"
+        <input class="snavi-drawer-input" type="text" placeholder="Buscar caso... ex: AP26000230"
                value="${currentCaseBase || ''}" />
-        <button class="snavi-drawer-go">Buscar</button>
+        <button class="snavi-drawer-go">Ir</button>
       </div>
     </div>
     <div class="snavi-drawer-footer">
@@ -456,6 +456,17 @@ function renderAuthenticatedView() {
   drawerEl.querySelectorAll('.snavi-drawer-item[data-slide-id]').forEach(item => {
     item.addEventListener('click', () => {
       requestViewerLink(item.dataset.slideId);
+    });
+  });
+
+  drawerEl.querySelectorAll('.snavi-detach-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const slideId = btn.dataset.detachSlideId;
+      if (!slideId || !currentCaseBase) return;
+      btn.disabled = true;
+      btn.textContent = '…';
+      chrome.runtime.sendMessage({ type: 'DETACH_SLIDE', slideId, caseBase: currentCaseBase });
     });
   });
 
@@ -655,6 +666,11 @@ chrome.runtime.onMessage.addListener((msg) => {
   }
   if (msg.type === 'VIEWER_LINK') {
     window.open(msg.url, '_blank');
+  }
+  if (msg.type === 'DETACH_RESULT' && msg.success) {
+    unlinkedSlides = null; // invalidate cache
+    chrome.runtime.sendMessage({ type: 'REFRESH_STATUS', caseBase: currentCaseBase });
+    chrome.runtime.sendMessage({ type: 'GET_UNLINKED_SLIDES' });
   }
   if (msg.type === 'UNLINKED_SLIDES') {
     unlinkedSlides = msg.slides || [];

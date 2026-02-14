@@ -255,6 +255,39 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
+  if (msg.type === 'DETACH_SLIDE') {
+    log('Detaching slide', msg.slideId, 'from case', msg.caseBase);
+
+    apiCall(`/api/ui-bridge/cases/${encodeURIComponent(msg.caseBase)}/detach`, {
+      method: 'POST',
+      body: JSON.stringify({ slideId: msg.slideId }),
+    })
+      .then(() => {
+        statusCache.delete(msg.caseBase.toUpperCase());
+
+        if (tabId) {
+          chrome.tabs.sendMessage(tabId, {
+            type: 'DETACH_RESULT',
+            success: true,
+            slideId: msg.slideId,
+            caseBase: msg.caseBase,
+          });
+        }
+      })
+      .catch(err => {
+        log('Detach error:', err.message);
+        if (tabId) {
+          chrome.tabs.sendMessage(tabId, {
+            type: 'DETACH_RESULT',
+            success: false,
+            error: err.message,
+          });
+        }
+      });
+
+    return true;
+  }
+
   if (msg.type === 'GET_UNLINKED_SLIDES') {
     log('Fetching unlinked slides');
 

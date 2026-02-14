@@ -494,35 +494,56 @@
 }
 
 /* ========================================
+   Detach button
+   ======================================== */
+.snavi-detach-btn {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--sn-text-muted);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.snavi-drawer-item:hover .snavi-detach-btn {
+  opacity: 1;
+}
+
+.snavi-detach-btn:hover {
+  background: rgba(255, 59, 48, 0.12);
+  color: #ff3b30;
+}
+
+/* ========================================
    Search footer
    ======================================== */
 .snavi-drawer-search-section {
   flex-shrink: 0;
-  padding: 14px 14px 18px;
+  padding: 8px 14px 10px;
   border-top: 1px solid var(--sn-separator);
-}
-
-.snavi-drawer-search-label {
-  font-family: var(--sn-font);
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--sn-text-secondary);
-  margin-bottom: 10px;
-  padding: 0 4px;
 }
 
 .snavi-drawer-search-row {
   display: flex;
-  gap: 8px;
+  gap: 6px;
 }
 
 .snavi-drawer-input {
   flex: 1;
-  padding: 10px 14px;
+  padding: 7px 10px;
   border: none;
-  border-radius: 10px;
+  border-radius: 8px;
   font-family: var(--sn-mono);
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 500;
   outline: none;
   min-width: 0;
@@ -543,13 +564,13 @@
 }
 
 .snavi-drawer-go {
-  padding: 10px 18px;
+  padding: 7px 12px;
   background: var(--sn-navy);
   color: var(--sn-white);
   border: none;
-  border-radius: 10px;
+  border-radius: 8px;
   font-family: var(--sn-font);
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
