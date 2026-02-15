@@ -344,7 +344,10 @@ function renderPairingView() {
 }
 
 function renderAuthenticatedView() {
-  const slides = currentStatus?.readySlides || [];
+  const slides = [
+    ...(currentStatus?.readySlides || []),
+    ...(currentStatus?.processingSlides || []),
+  ];
   const hasSlides = slides.length > 0;
   const statusCls = getStatusClass();
 
