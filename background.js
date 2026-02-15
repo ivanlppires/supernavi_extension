@@ -1,12 +1,17 @@
 /**
  * SuperNavi PathoWeb Extension - Background Service Worker
  *
- * Handles API calls to SuperNavi UI-Bridge, caching, and message relay.
+ * Edge-first architecture: discovers slides from local edge agent via tunnel,
+ * falls back to cloud when edge is unavailable.
  */
 
 // In-memory cache for case status (30s TTL)
 const statusCache = new Map();
 const CACHE_TTL_MS = 30_000;
+const EDGE_TIMEOUT_MS = 3_000;
+
+// Edge agent ID — resolved from /api/ui-bridge/me on auth
+let edgeAgentId = null;
 
 /**
  * Get configuration from chrome.storage.sync
@@ -16,8 +21,13 @@ async function getConfig() {
     apiBaseUrl: 'https://cloud.supernavi.app',
     apiKey: '',
     deviceToken: '',
+    edgeAgentId: '',
     debug: false,
   });
+  // Restore cached edgeAgentId
+  if (!edgeAgentId && result.edgeAgentId) {
+    edgeAgentId = result.edgeAgentId;
+  }
   return result;
 }
 
@@ -28,7 +38,7 @@ function log(...args) {
 }
 
 /**
- * Make authenticated API call to SuperNavi UI-Bridge
+ * Make authenticated API call to SuperNavi UI-Bridge (cloud)
  */
 async function apiCall(path, options = {}) {
   const config = await getConfig();
@@ -40,7 +50,6 @@ async function apiCall(path, options = {}) {
   const url = `${config.apiBaseUrl}${path}`;
   log('API call:', options.method || 'GET', url);
 
-  // Dual-mode auth: prefer device token over legacy API key
   const authHeaders = {};
   if (config.deviceToken) {
     authHeaders['x-device-token'] = config.deviceToken;
@@ -66,7 +75,41 @@ async function apiCall(path, options = {}) {
 }
 
 /**
- * Get case status with caching
+ * Make a call to the edge agent via cloud tunnel.
+ * Returns null on any failure (for easy fallback).
+ */
+async function edgeCall(path, options = {}) {
+  if (!edgeAgentId) return null;
+
+  const config = await getConfig();
+  const url = `${config.apiBaseUrl}/edge/${edgeAgentId}${path}`;
+  log('Edge call:', options.method || 'GET', url);
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), EDGE_TIMEOUT_MS);
+
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(options.headers || {}),
+      },
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) return null;
+    return response.json();
+  } catch (err) {
+    log('Edge call failed:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Get case status — edge-first with cloud fallback
  */
 async function getCaseStatus(caseBase) {
   const cacheKey = caseBase.toUpperCase();
@@ -77,17 +120,108 @@ async function getCaseStatus(caseBase) {
     return cached.data;
   }
 
+  // Try edge first
+  const edgeData = await edgeCall(`/v1/cases/by-ref/${encodeURIComponent(caseBase)}`);
+  if (edgeData && edgeData.slides) {
+    log('Case status from EDGE:', caseBase);
+    const mapped = {
+      caseBase: edgeData.caseBase || caseBase,
+      externalCaseId: `pathoweb:${caseBase.toUpperCase()}`,
+      readySlides: edgeData.slides.map((s, i) => ({
+        slideId: s.slideId,
+        label: null,
+        filename: s.filename,
+        index: i + 1,
+        thumbUrl: `/edge/${edgeAgentId}/v1/slides/${s.slideId}/thumb`,
+        width: s.width,
+        height: s.height,
+      })),
+      processingSlides: [],
+      unconfirmedCandidates: [],
+      source: 'edge',
+    };
+    statusCache.set(cacheKey, { data: mapped, timestamp: Date.now() });
+    return mapped;
+  }
+
+  // Fallback to cloud
+  log('Falling back to cloud for case status:', caseBase);
   const data = await apiCall(`/api/ui-bridge/cases/${encodeURIComponent(caseBase)}/status`);
   statusCache.set(cacheKey, { data, timestamp: Date.now() });
   return data;
 }
 
 /**
- * Get extension auth info (device + user)
+ * Get unlinked slides — edge-first with cloud fallback
+ */
+async function getUnlinkedSlides() {
+  // Try edge first
+  const edgeData = await edgeCall('/v1/slides/unlinked');
+  if (edgeData && edgeData.slides) {
+    log('Unlinked slides from EDGE:', edgeData.slides.length);
+    return edgeData.slides.map(s => ({
+      slideId: s.slideId,
+      filename: s.filename,
+      thumbUrl: `/edge/${edgeAgentId}/v1/slides/${s.slideId}/thumb`,
+      width: s.width,
+      height: s.height,
+      hasPreview: true,
+      createdAt: s.createdAt,
+    }));
+  }
+
+  // Fallback to cloud
+  log('Falling back to cloud for unlinked slides');
+  const data = await apiCall('/api/ui-bridge/slides/unlinked');
+  return data.slides || [];
+}
+
+/**
+ * Attach slide to case — edge-first with cloud sync
+ */
+async function attachSlide(slideId, caseBase, patientData) {
+  // Try edge first
+  const edgeResult = await edgeCall(`/v1/slides/${slideId}/link-to-case`, {
+    method: 'POST',
+    body: JSON.stringify({ caseBase, patientName: patientData?.patientName }),
+  });
+
+  if (edgeResult && edgeResult.ok) {
+    log('Slide attached via EDGE:', slideId, caseBase);
+
+    // Fire-and-forget: also sync to cloud
+    apiCall(`/api/ui-bridge/cases/${encodeURIComponent(caseBase)}/attach`, {
+      method: 'POST',
+      body: JSON.stringify({ slideId }),
+    }).catch(err => log('Cloud sync attach (background):', err.message));
+
+    return { success: true };
+  }
+
+  // Fallback to cloud
+  log('Falling back to cloud for attach:', slideId, caseBase);
+  await apiCall(`/api/ui-bridge/cases/${encodeURIComponent(caseBase)}/attach`, {
+    method: 'POST',
+    body: JSON.stringify({ slideId }),
+  });
+  return { success: true };
+}
+
+/**
+ * Get extension auth info (device + user + edgeAgentId)
  */
 async function getAuthInfo() {
   try {
-    return await apiCall('/api/ui-bridge/me');
+    const data = await apiCall('/api/ui-bridge/me');
+
+    // Store edge agent ID
+    if (data.edgeAgentId) {
+      edgeAgentId = data.edgeAgentId;
+      chrome.storage.sync.set({ edgeAgentId: data.edgeAgentId });
+      log('Edge agent ID resolved:', edgeAgentId);
+    }
+
+    return data;
   } catch (err) {
     log('Auth info error:', err.message);
     return { authenticated: false, device: null, user: null };
@@ -156,7 +290,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           chrome.tabs.sendMessage(tabId, { type: 'PAIRING_RESULT', success: true, deviceName: data.deviceName });
         }
 
-        // Fetch and send updated auth info
+        // Fetch and send updated auth info (also resolves edgeAgentId)
         const authData = await getAuthInfo();
         if (tabId) {
           chrome.tabs.sendMessage(tabId, { type: 'AUTH_INFO', ...authData });
@@ -196,7 +330,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         }
       });
 
-    return true; // Keep channel open for async
+    return true;
   }
 
   if (msg.type === 'REQUEST_VIEWER_LINK') {
@@ -211,7 +345,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       }),
     })
       .then(data => {
-        // Open viewer in new tab directly from background (avoids popup blocker)
         chrome.tabs.create({ url: data.url });
       })
       .catch(err => {
@@ -224,12 +357,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'ATTACH_SLIDE') {
     log('Attaching slide', msg.slideId, 'to case', msg.caseBase);
 
-    apiCall(`/api/ui-bridge/cases/${encodeURIComponent(msg.caseBase)}/attach`, {
-      method: 'POST',
-      body: JSON.stringify({ slideId: msg.slideId }),
-    })
+    attachSlide(msg.slideId, msg.caseBase, msg.patientData)
       .then(() => {
-        // Invalidate cache
         statusCache.delete(msg.caseBase.toUpperCase());
 
         if (tabId) {
@@ -291,12 +420,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'GET_UNLINKED_SLIDES') {
     log('Fetching unlinked slides');
 
-    apiCall('/api/ui-bridge/slides/unlinked')
-      .then(data => {
+    getUnlinkedSlides()
+      .then(slides => {
         if (tabId) {
           chrome.tabs.sendMessage(tabId, {
             type: 'UNLINKED_SLIDES',
-            slides: data.slides || [],
+            slides,
           });
         }
       })
@@ -314,7 +443,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   if (msg.type === 'REFRESH_STATUS') {
-    // Force cache invalidation and re-fetch
     statusCache.delete(msg.caseBase?.toUpperCase());
     if (msg.caseBase) {
       getCaseStatus(msg.caseBase)
