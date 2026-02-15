@@ -377,7 +377,7 @@ function renderAuthenticatedView() {
             <li class="snavi-drawer-item" data-slide-id="${s.slideId}" style="--i:${i}">
               ${s.thumbUrl
                 ? `<img class="snavi-drawer-thumb" src="${getThumbUrl(s.thumbUrl)}" alt="" />`
-                : `<div class="snavi-drawer-thumb"></div>`}
+                : `<div class="snavi-drawer-thumb snavi-thumb-placeholder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2"/><path d="M10 5v6l-3 4h10l-3-4V5"/><path d="M6 19h12"/></svg></div>`}
               <div class="snavi-drawer-item-info">
                 <span class="snavi-drawer-label">${escapeHtml(formatSlideLabel(s, i))}</span>
                 <span class="snavi-drawer-sublabel">${dims || 'Abrir no viewer'}</span>
@@ -413,7 +413,7 @@ function renderAuthenticatedView() {
             <div class="snavi-unlinked-card" style="--i:${i}">
               ${s.thumbUrl
                 ? `<img class="snavi-unlinked-thumb" src="${getThumbUrl(s.thumbUrl)}" alt="" />`
-                : `<div class="snavi-unlinked-thumb"></div>`}
+                : `<div class="snavi-unlinked-thumb snavi-thumb-placeholder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2"/><path d="M10 5v6l-3 4h10l-3-4V5"/><path d="M6 19h12"/></svg></div>`}
               <div class="snavi-unlinked-body">
                 <span class="snavi-unlinked-filename">${escapeHtml(name)}</span>
                 <span class="snavi-unlinked-meta">${[ext, dims, date].filter(Boolean).join(' · ')}</span>
