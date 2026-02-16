@@ -570,6 +570,32 @@
   color: var(--sn-text);
 }
 
+.snavi-logout-btn {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 8px;
+  background: var(--sn-surface);
+  color: var(--sn-text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, color 0.15s ease;
+  padding: 0;
+}
+
+.snavi-logout-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.snavi-logout-btn:hover {
+  background: rgba(255, 59, 48, 0.12);
+  color: var(--sn-red);
+}
+
 /* ========================================
    Search section (collapsible)
    ======================================== */

@@ -48,6 +48,9 @@ const ICON = {
   search: `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
     <circle cx="7" cy="7" r="4.5"/><line x1="10.2" y1="10.2" x2="13.5" y2="13.5"/>
   </svg>`,
+  logout: `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M6 2H3.5A1.5 1.5 0 002 3.5v9A1.5 1.5 0 003.5 14H6"/><path d="M10.5 11.5L14 8l-3.5-3.5"/><line x1="6" y1="8" x2="14" y2="8"/>
+  </svg>`,
   link: `<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
     <path d="M16.5 23.5a6.5 6.5 0 009.2 0l4-4a6.5 6.5 0 00-9.2-9.2l-2 2"/>
     <path d="M23.5 16.5a6.5 6.5 0 00-9.2 0l-4 4a6.5 6.5 0 009.2 9.2l2-2"/>
@@ -449,6 +452,7 @@ function renderAuthenticatedView() {
               <span class="snavi-drawer-user-detail">${escapeHtml(authInfo.device?.name || '')}</span>
             </div>
             <button class="snavi-search-toggle" title="Buscar caso">${ICON.search}</button>
+            <button class="snavi-logout-btn" title="Desconectar">${ICON.logout}</button>
           </div>`
         : `<div class="snavi-drawer-user">
             <div class="snavi-drawer-user-icon">${ICON.user}</div>
@@ -457,6 +461,7 @@ function renderAuthenticatedView() {
               <span class="snavi-drawer-user-detail">Modo legado</span>
             </div>
             <button class="snavi-search-toggle" title="Buscar caso">${ICON.search}</button>
+            <button class="snavi-logout-btn" title="Desconectar">${ICON.logout}</button>
           </div>`}
     </div>
   `;
@@ -499,6 +504,17 @@ function renderAuthenticatedView() {
       btn.disabled = true;
       btn.textContent = '...';
       chrome.runtime.sendMessage({ type: 'ATTACH_SLIDE', slideId, caseBase: currentCaseBase });
+    });
+  });
+
+  // Logout button
+  const logoutBtn = drawerEl.querySelector('.snavi-logout-btn');
+  logoutBtn?.addEventListener('click', () => {
+    chrome.storage.sync.set({ deviceToken: '', deviceId: '', deviceName: '' }, () => {
+      authInfo = null;
+      currentStatus = null;
+      unlinkedSlides = null;
+      renderDrawerContent();
     });
   });
 
