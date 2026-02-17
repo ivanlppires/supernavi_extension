@@ -481,7 +481,15 @@ function renderAuthenticatedView() {
 
   drawerEl.querySelectorAll('.snavi-drawer-item[data-slide-id]').forEach(item => {
     item.addEventListener('click', () => {
-      requestViewerLink(item.dataset.slideId);
+      const slideId = item.dataset.slideId;
+      // Show loading state
+      item.classList.add('snavi-drawer-item--loading');
+      const sublabel = item.querySelector('.snavi-drawer-sublabel');
+      if (sublabel) {
+        sublabel.dataset.originalText = sublabel.textContent;
+        sublabel.textContent = 'Abrindo...';
+      }
+      requestViewerLink(slideId);
     });
   });
 
@@ -654,6 +662,18 @@ function requestCaseStatus(caseBase) {
   chrome.runtime.sendMessage({ type: 'CASE_DETECTED', caseBase });
 }
 
+function clearItemLoading(slideId) {
+  if (!drawerEl) return;
+  const item = drawerEl.querySelector(`.snavi-drawer-item[data-slide-id="${slideId}"]`);
+  if (!item) return;
+  item.classList.remove('snavi-drawer-item--loading');
+  const sublabel = item.querySelector('.snavi-drawer-sublabel');
+  if (sublabel && sublabel.dataset.originalText) {
+    sublabel.textContent = sublabel.dataset.originalText;
+    delete sublabel.dataset.originalText;
+  }
+}
+
 function requestViewerLink(slideId) {
   if (debounceTimer) return;
   debounceTimer = setTimeout(() => { debounceTimer = null; }, 2000);
@@ -713,10 +733,21 @@ chrome.runtime.onMessage.addListener((msg) => {
   if (msg.type === 'VIEWER_LINK') {
     window.open(msg.url, '_blank');
   }
-  if (msg.type === 'DETACH_RESULT' && msg.success) {
-    unlinkedSlides = null; // invalidate cache
-    chrome.runtime.sendMessage({ type: 'REFRESH_STATUS', caseBase: currentCaseBase });
-    chrome.runtime.sendMessage({ type: 'GET_UNLINKED_SLIDES' });
+  if (msg.type === 'VIEWER_LINK_OPENED' || msg.type === 'VIEWER_LINK_ERROR') {
+    clearItemLoading(msg.slideId);
+    if (msg.type === 'VIEWER_LINK_ERROR') {
+      showDebugToast(`Erro ao abrir: ${msg.error}`);
+    }
+  }
+  if (msg.type === 'DETACH_RESULT') {
+    if (msg.success) {
+      unlinkedSlides = null; // invalidate cache
+      chrome.runtime.sendMessage({ type: 'REFRESH_STATUS', caseBase: currentCaseBase });
+      chrome.runtime.sendMessage({ type: 'GET_UNLINKED_SLIDES' });
+    } else {
+      showDebugToast(`Erro ao desvincular: ${msg.error || 'falha desconhecida'}`);
+      if (drawerOpen) renderDrawerContent(); // restore button state
+    }
   }
   if (msg.type === 'UNLINKED_SLIDES') {
     unlinkedSlides = msg.slides || [];
