@@ -1,34 +1,24 @@
 /**
  * SuperNavi PathoWeb Extension - Background Service Worker
  *
- * Edge-first architecture: discovers slides from local edge agent via tunnel,
- * falls back to cloud when edge is unavailable.
+ * Cloud-first architecture: all data comes from cloud API.
+ * Bindings connect PathoWeb cases to SuperNavi slides.
  */
 
 // In-memory cache for case status (30s TTL)
 const statusCache = new Map();
 const CACHE_TTL_MS = 30_000;
-const EDGE_TIMEOUT_MS = 3_000;
-
-// Edge agent ID — resolved from /api/ui-bridge/me on auth
-let edgeAgentId = null;
 
 /**
  * Get configuration from chrome.storage.sync
  */
 async function getConfig() {
-  const result = await chrome.storage.sync.get({
+  return chrome.storage.sync.get({
     apiBaseUrl: 'https://cloud.supernavi.app',
     apiKey: '',
     deviceToken: '',
-    edgeAgentId: '',
     debug: false,
   });
-  // Restore cached edgeAgentId
-  if (!edgeAgentId && result.edgeAgentId) {
-    edgeAgentId = result.edgeAgentId;
-  }
-  return result;
 }
 
 function log(...args) {
@@ -38,7 +28,7 @@ function log(...args) {
 }
 
 /**
- * Make authenticated API call to SuperNavi UI-Bridge (cloud)
+ * Make authenticated API call to SuperNavi cloud
  */
 async function apiCall(path, options = {}) {
   const config = await getConfig();
@@ -75,41 +65,7 @@ async function apiCall(path, options = {}) {
 }
 
 /**
- * Make a call to the edge agent via cloud tunnel.
- * Returns null on any failure (for easy fallback).
- */
-async function edgeCall(path, options = {}) {
-  if (!edgeAgentId) return null;
-
-  const config = await getConfig();
-  const url = `${config.apiBaseUrl}/edge/${edgeAgentId}${path}`;
-  log('Edge call:', options.method || 'GET', url);
-
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), EDGE_TIMEOUT_MS);
-
-    const response = await fetch(url, {
-      ...options,
-      signal: controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(options.headers || {}),
-      },
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) return null;
-    return response.json();
-  } catch (err) {
-    log('Edge call failed:', err.message);
-    return null;
-  }
-}
-
-/**
- * Get case status — edge-first with cloud fallback
+ * Get case status from cloud
  */
 async function getCaseStatus(caseBase) {
   const cacheKey = caseBase.toUpperCase();
@@ -120,107 +76,41 @@ async function getCaseStatus(caseBase) {
     return cached.data;
   }
 
-  // Try edge first
-  const edgeData = await edgeCall(`/v1/cases/by-ref/${encodeURIComponent(caseBase)}`);
-  if (edgeData && edgeData.slides) {
-    log('Case status from EDGE:', caseBase);
-    const mapped = {
-      caseBase: edgeData.caseBase || caseBase,
-      externalCaseId: `pathoweb:${caseBase.toUpperCase()}`,
-      readySlides: edgeData.slides.map((s, i) => ({
-        slideId: s.slideId,
-        label: null,
-        filename: s.filename,
-        index: i + 1,
-        thumbUrl: `/edge/${edgeAgentId}/v1/slides/${s.slideId}/thumb`,
-        width: s.width,
-        height: s.height,
-      })),
-      processingSlides: [],
-      unconfirmedCandidates: [],
-      source: 'edge',
-    };
-    statusCache.set(cacheKey, { data: mapped, timestamp: Date.now() });
-    return mapped;
-  }
-
-  // Fallback to cloud
-  log('Falling back to cloud for case status:', caseBase);
   const data = await apiCall(`/api/ui-bridge/cases/${encodeURIComponent(caseBase)}/status`);
   statusCache.set(cacheKey, { data, timestamp: Date.now() });
   return data;
 }
 
 /**
- * Get unlinked slides — edge-first with cloud fallback
+ * Get bindings for a pathowebRef
  */
-async function getUnlinkedSlides() {
-  // Try edge first
-  const edgeData = await edgeCall('/v1/slides/unlinked');
-  if (edgeData && edgeData.slides) {
-    log('Unlinked slides from EDGE:', edgeData.slides.length);
-    return edgeData.slides.map(s => ({
-      slideId: s.slideId,
-      filename: s.filename,
-      thumbUrl: `/edge/${edgeAgentId}/v1/slides/${s.slideId}/thumb`,
-      width: s.width,
-      height: s.height,
-      hasPreview: true,
-      createdAt: s.createdAt,
-    }));
-  }
-
-  // Fallback to cloud
-  log('Falling back to cloud for unlinked slides');
-  const data = await apiCall('/api/ui-bridge/slides/unlinked');
-  return data.slides || [];
+async function getBindings(pathowebRef) {
+  return apiCall(`/api/v1/bindings/${encodeURIComponent(pathowebRef)}`);
 }
 
 /**
- * Attach slide to case — edge-first with cloud sync
+ * Create a binding between a pathowebRef and a slideId
  */
-async function attachSlide(slideId, caseBase, patientData) {
-  // Try edge first
-  const edgeResult = await edgeCall(`/v1/slides/${slideId}/link-to-case`, {
+async function createBinding(pathowebRef, slideId) {
+  return apiCall('/api/v1/bindings', {
     method: 'POST',
-    body: JSON.stringify({ caseBase, patientName: patientData?.patientName }),
+    body: JSON.stringify({ pathowebRef, slideId }),
   });
-
-  if (edgeResult && edgeResult.ok) {
-    log('Slide attached via EDGE:', slideId, caseBase);
-
-    // Fire-and-forget: also sync to cloud
-    apiCall(`/api/ui-bridge/cases/${encodeURIComponent(caseBase)}/attach`, {
-      method: 'POST',
-      body: JSON.stringify({ slideId }),
-    }).catch(err => log('Cloud sync attach (background):', err.message));
-
-    return { success: true };
-  }
-
-  // Fallback to cloud
-  log('Falling back to cloud for attach:', slideId, caseBase);
-  await apiCall(`/api/ui-bridge/cases/${encodeURIComponent(caseBase)}/attach`, {
-    method: 'POST',
-    body: JSON.stringify({ slideId }),
-  });
-  return { success: true };
 }
 
 /**
- * Get extension auth info (device + user + edgeAgentId)
+ * Get READY slides available for binding
+ */
+async function getReadySlides() {
+  return apiCall('/api/v1/slides/ready');
+}
+
+/**
+ * Get extension auth info
  */
 async function getAuthInfo() {
   try {
     const data = await apiCall('/api/ui-bridge/me');
-
-    // Store edge agent ID
-    if (data.edgeAgentId) {
-      edgeAgentId = data.edgeAgentId;
-      chrome.storage.sync.set({ edgeAgentId: data.edgeAgentId });
-      log('Edge agent ID resolved:', edgeAgentId);
-    }
-
     return data;
   } catch (err) {
     log('Auth info error:', err.message);
@@ -265,7 +155,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         });
 
         if (!response.ok) {
-          const text = await response.text().catch(() => '');
           const errorMsg = response.status === 404 ? 'Codigo invalido'
             : response.status === 410 ? 'Codigo expirado ou ja usado'
             : `Erro ${response.status}`;
@@ -277,7 +166,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
         const data = await response.json();
 
-        // Store device credentials
         await chrome.storage.sync.set({
           deviceToken: data.deviceToken,
           deviceId: data.deviceId,
@@ -290,7 +178,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           chrome.tabs.sendMessage(tabId, { type: 'PAIRING_RESULT', success: true, deviceName: data.deviceName });
         }
 
-        // Fetch and send updated auth info (also resolves edgeAgentId)
         const authData = await getAuthInfo();
         if (tabId) {
           chrome.tabs.sendMessage(tabId, { type: 'AUTH_INFO', ...authData });
@@ -333,6 +220,69 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
+  if (msg.type === 'GET_BINDINGS') {
+    log('Getting bindings for:', msg.pathowebRef);
+
+    getBindings(msg.pathowebRef)
+      .then(data => {
+        if (tabId) {
+          chrome.tabs.sendMessage(tabId, { type: 'BINDINGS_RESULT', ...data });
+        }
+      })
+      .catch(err => {
+        log('Bindings error:', err.message);
+        if (tabId) {
+          chrome.tabs.sendMessage(tabId, {
+            type: 'BINDINGS_RESULT',
+            pathowebRef: msg.pathowebRef,
+            bindings: [],
+            error: err.message,
+          });
+        }
+      });
+
+    return true;
+  }
+
+  if (msg.type === 'CREATE_BINDING') {
+    log('Creating binding:', msg.pathowebRef, '->', msg.slideId);
+
+    createBinding(msg.pathowebRef, msg.slideId)
+      .then(data => {
+        statusCache.delete(msg.pathowebRef?.toUpperCase());
+        if (tabId) {
+          chrome.tabs.sendMessage(tabId, { type: 'BINDING_CREATED', ...data });
+        }
+      })
+      .catch(err => {
+        log('Create binding error:', err.message);
+        if (tabId) {
+          chrome.tabs.sendMessage(tabId, { type: 'BINDING_CREATED', ok: false, error: err.message });
+        }
+      });
+
+    return true;
+  }
+
+  if (msg.type === 'GET_READY_SLIDES') {
+    log('Fetching READY slides');
+
+    getReadySlides()
+      .then(data => {
+        if (tabId) {
+          chrome.tabs.sendMessage(tabId, { type: 'READY_SLIDES', ...data });
+        }
+      })
+      .catch(err => {
+        log('Ready slides error:', err.message);
+        if (tabId) {
+          chrome.tabs.sendMessage(tabId, { type: 'READY_SLIDES', slides: [] });
+        }
+      });
+
+    return true;
+  }
+
   if (msg.type === 'REQUEST_VIEWER_LINK') {
     log('Requesting viewer link for slide:', msg.slideId);
 
@@ -346,9 +296,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     })
       .then(data => {
         chrome.tabs.create({ url: data.url });
+        if (tabId) chrome.tabs.sendMessage(tabId, { type: 'VIEWER_LINK_OPENED', slideId: msg.slideId });
       })
       .catch(err => {
         log('Viewer link error:', err.message);
+        if (tabId) chrome.tabs.sendMessage(tabId, { type: 'VIEWER_LINK_ERROR', slideId: msg.slideId, error: err.message });
       });
 
     return true;
@@ -357,10 +309,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'ATTACH_SLIDE') {
     log('Attaching slide', msg.slideId, 'to case', msg.caseBase);
 
-    attachSlide(msg.slideId, msg.caseBase, msg.patientData)
+    apiCall(`/api/ui-bridge/cases/${encodeURIComponent(msg.caseBase)}/attach`, {
+      method: 'POST',
+      body: JSON.stringify({ slideId: msg.slideId }),
+    })
       .then(() => {
         statusCache.delete(msg.caseBase.toUpperCase());
-
         if (tabId) {
           chrome.tabs.sendMessage(tabId, {
             type: 'ATTACH_RESULT',
@@ -393,7 +347,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     })
       .then(() => {
         statusCache.delete(msg.caseBase.toUpperCase());
-
         if (tabId) {
           chrome.tabs.sendMessage(tabId, {
             type: 'DETACH_RESULT',
@@ -420,12 +373,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'GET_UNLINKED_SLIDES') {
     log('Fetching unlinked slides');
 
-    getUnlinkedSlides()
-      .then(slides => {
+    apiCall('/api/ui-bridge/slides/unlinked')
+      .then(data => {
         if (tabId) {
           chrome.tabs.sendMessage(tabId, {
             type: 'UNLINKED_SLIDES',
-            slides,
+            slides: data.slides || [],
           });
         }
       })
