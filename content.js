@@ -758,6 +758,18 @@ chrome.runtime.onMessage.addListener((msg) => {
     chrome.runtime.sendMessage({ type: 'REFRESH_STATUS', caseBase: currentCaseBase });
     chrome.runtime.sendMessage({ type: 'GET_UNLINKED_SLIDES' });
   }
+  if (msg.type === 'BINDINGS_RESULT') {
+    if (drawerOpen) renderDrawerContent();
+  }
+  if (msg.type === 'BINDING_CREATED') {
+    if (msg.ok && currentCaseBase) {
+      chrome.runtime.sendMessage({ type: 'GET_BINDINGS', pathowebRef: currentCaseBase });
+      chrome.runtime.sendMessage({ type: 'REFRESH_STATUS', caseBase: currentCaseBase });
+    }
+  }
+  if (msg.type === 'READY_SLIDES') {
+    if (drawerOpen) renderDrawerContent();
+  }
 });
 
 // ============================================================================
