@@ -414,7 +414,7 @@ function renderAuthenticatedView() {
             </div>`;
           }).join('')}
         </div>
-      `}
+      ` : ''}
     </div>
     <div class="snavi-drawer-search-section snavi-hidden">
       <div class="snavi-drawer-search-row">
