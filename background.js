@@ -2,7 +2,7 @@
  * SuperNavi PathoWeb Extension - Background Service Worker
  *
  * Cloud-first architecture: all data comes from cloud API.
- * Bindings connect PathoWeb cases to SuperNavi slides.
+ * Slides are matched to cases automatically by filename.
  */
 
 // In-memory cache for case status (30s TTL)
@@ -65,7 +65,7 @@ async function apiCall(path, options = {}) {
 }
 
 /**
- * Get case status from cloud
+ * Get case status from cloud (slides matched automatically by filename)
  */
 async function getCaseStatus(caseBase) {
   const cacheKey = caseBase.toUpperCase();
@@ -79,30 +79,6 @@ async function getCaseStatus(caseBase) {
   const data = await apiCall(`/api/ui-bridge/cases/${encodeURIComponent(caseBase)}/status`);
   statusCache.set(cacheKey, { data, timestamp: Date.now() });
   return data;
-}
-
-/**
- * Get bindings for a pathowebRef
- */
-async function getBindings(pathowebRef) {
-  return apiCall(`/api/v1/bindings/${encodeURIComponent(pathowebRef)}`);
-}
-
-/**
- * Create a binding between a pathowebRef and a slideId
- */
-async function createBinding(pathowebRef, slideId) {
-  return apiCall('/api/v1/bindings', {
-    method: 'POST',
-    body: JSON.stringify({ pathowebRef, slideId }),
-  });
-}
-
-/**
- * Get READY slides available for binding
- */
-async function getReadySlides() {
-  return apiCall('/api/v1/slides/ready');
 }
 
 /**
@@ -220,69 +196,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
-  if (msg.type === 'GET_BINDINGS') {
-    log('Getting bindings for:', msg.pathowebRef);
-
-    getBindings(msg.pathowebRef)
-      .then(data => {
-        if (tabId) {
-          chrome.tabs.sendMessage(tabId, { type: 'BINDINGS_RESULT', ...data });
-        }
-      })
-      .catch(err => {
-        log('Bindings error:', err.message);
-        if (tabId) {
-          chrome.tabs.sendMessage(tabId, {
-            type: 'BINDINGS_RESULT',
-            pathowebRef: msg.pathowebRef,
-            bindings: [],
-            error: err.message,
-          });
-        }
-      });
-
-    return true;
-  }
-
-  if (msg.type === 'CREATE_BINDING') {
-    log('Creating binding:', msg.pathowebRef, '->', msg.slideId);
-
-    createBinding(msg.pathowebRef, msg.slideId)
-      .then(data => {
-        statusCache.delete(msg.pathowebRef?.toUpperCase());
-        if (tabId) {
-          chrome.tabs.sendMessage(tabId, { type: 'BINDING_CREATED', ...data });
-        }
-      })
-      .catch(err => {
-        log('Create binding error:', err.message);
-        if (tabId) {
-          chrome.tabs.sendMessage(tabId, { type: 'BINDING_CREATED', ok: false, error: err.message });
-        }
-      });
-
-    return true;
-  }
-
-  if (msg.type === 'GET_READY_SLIDES') {
-    log('Fetching READY slides');
-
-    getReadySlides()
-      .then(data => {
-        if (tabId) {
-          chrome.tabs.sendMessage(tabId, { type: 'READY_SLIDES', ...data });
-        }
-      })
-      .catch(err => {
-        log('Ready slides error:', err.message);
-        if (tabId) {
-          chrome.tabs.sendMessage(tabId, { type: 'READY_SLIDES', slides: [] });
-        }
-      });
-
-    return true;
-  }
-
   if (msg.type === 'REQUEST_VIEWER_LINK') {
     log('Requesting viewer link for slide:', msg.slideId);
 
@@ -301,95 +214,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       .catch(err => {
         log('Viewer link error:', err.message);
         if (tabId) chrome.tabs.sendMessage(tabId, { type: 'VIEWER_LINK_ERROR', slideId: msg.slideId, error: err.message });
-      });
-
-    return true;
-  }
-
-  if (msg.type === 'ATTACH_SLIDE') {
-    log('Attaching slide', msg.slideId, 'to case', msg.caseBase);
-
-    apiCall(`/api/ui-bridge/cases/${encodeURIComponent(msg.caseBase)}/attach`, {
-      method: 'POST',
-      body: JSON.stringify({ slideId: msg.slideId }),
-    })
-      .then(() => {
-        statusCache.delete(msg.caseBase.toUpperCase());
-        if (tabId) {
-          chrome.tabs.sendMessage(tabId, {
-            type: 'ATTACH_RESULT',
-            success: true,
-            slideId: msg.slideId,
-            caseBase: msg.caseBase,
-          });
-        }
-      })
-      .catch(err => {
-        log('Attach error:', err.message);
-        if (tabId) {
-          chrome.tabs.sendMessage(tabId, {
-            type: 'ATTACH_RESULT',
-            success: false,
-            error: err.message,
-          });
-        }
-      });
-
-    return true;
-  }
-
-  if (msg.type === 'DETACH_SLIDE') {
-    log('Detaching slide', msg.slideId, 'from case', msg.caseBase);
-
-    apiCall(`/api/ui-bridge/cases/${encodeURIComponent(msg.caseBase)}/detach`, {
-      method: 'POST',
-      body: JSON.stringify({ slideId: msg.slideId }),
-    })
-      .then(() => {
-        statusCache.delete(msg.caseBase.toUpperCase());
-        if (tabId) {
-          chrome.tabs.sendMessage(tabId, {
-            type: 'DETACH_RESULT',
-            success: true,
-            slideId: msg.slideId,
-            caseBase: msg.caseBase,
-          });
-        }
-      })
-      .catch(err => {
-        log('Detach error:', err.message);
-        if (tabId) {
-          chrome.tabs.sendMessage(tabId, {
-            type: 'DETACH_RESULT',
-            success: false,
-            error: err.message,
-          });
-        }
-      });
-
-    return true;
-  }
-
-  if (msg.type === 'GET_UNLINKED_SLIDES') {
-    log('Fetching unlinked slides');
-
-    apiCall('/api/ui-bridge/slides/unlinked')
-      .then(data => {
-        if (tabId) {
-          chrome.tabs.sendMessage(tabId, {
-            type: 'UNLINKED_SLIDES',
-            slides: data.slides || [],
-          });
-        }
-      })
-      .catch(err => {
-        log('Unlinked slides error:', err.message);
-        if (tabId) {
-          chrome.tabs.sendMessage(tabId, {
-            type: 'UNLINKED_SLIDES',
-            slides: [],
-          });
-        }
       });
 
     return true;
