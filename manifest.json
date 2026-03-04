@@ -18,7 +18,9 @@
         "*://pathoweb.com.br/moduloExame/index*",
         "*://pathoweb.com.br/moduloExame/*",
         "*://*.pathoweb.com.br/*",
-        "https://supernavi.app/demo/*"
+        "https://supernavi.app/demo/*",
+        "https://viewer.supernavi.app/demo/*"
+
       ],
       "js": [
         "content.js"
