@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "SuperNavi - PathoWeb Bridge",
-  "version": "1.0.0",
-  "description": "Integra SuperNavi com PathoWeb para visualizacao rapida de lâminas digitalizadas",
-  "permissions": ["storage", "activeTab"],
+  "name": "SuperNavi - Bridge Extension",
+  "version": "1.0.1",
+  "description": "Conecta o SuperNavi ao seu sistema de casos para abrir lâminas digitais no Viewer com fluidez.",
+  "permissions": ["storage"],
   "host_permissions": [
     "https://pathoweb.com.br/*",
     "https://cloud.supernavi.app/*"
