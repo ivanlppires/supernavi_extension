@@ -3,21 +3,29 @@
   "name": "SuperNavi - Bridge Extension",
   "version": "1.0.1",
   "description": "Conecta o SuperNavi ao seu sistema de casos para abrir lâminas digitais no Viewer com fluidez.",
-  "permissions": ["storage"],
+  "permissions": [
+    "storage"
+  ],
   "host_permissions": [
     "https://pathoweb.com.br/*",
     "https://cloud.supernavi.app/*",
-    "https://viewer.supernavi.app/*"
+    "https://viewer.supernavi.app/*",
+    "https://supernavi.app/*"
   ],
   "content_scripts": [
     {
       "matches": [
         "*://pathoweb.com.br/moduloExame/index*",
         "*://pathoweb.com.br/moduloExame/*",
-        "*://*.pathoweb.com.br/*"
+        "*://*.pathoweb.com.br/*",
+        "https://supernavi.app/demo/*"
       ],
-      "js": ["content.js"],
-      "css": ["ui.css"],
+      "js": [
+        "content.js"
+      ],
+      "css": [
+        "ui.css"
+      ],
       "run_at": "document_idle"
     }
   ],
@@ -36,8 +44,13 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["icons/icon48.png"],
-      "matches": ["*://pathoweb.com.br/*", "*://*.pathoweb.com.br/*"]
+      "resources": [
+        "icons/icon48.png"
+      ],
+      "matches": [
+        "*://pathoweb.com.br/*",
+        "*://*.pathoweb.com.br/*"
+      ]
     }
   ]
 }
