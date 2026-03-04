@@ -1,12 +1,26 @@
-# SuperNavi - PathoWeb Bridge
+# SuperNavi - Bridge Extension
 
-Extensão Chrome que integra o [SuperNavi](https://viewer.supernavi.app) ao sistema PathoWeb, permitindo visualização rápida de lâminas digitalizadas diretamente na tela de exames.
+Extensão Chrome que conecta o [SuperNavi](https://viewer.supernavi.app) ao sistema de gestão da clínica, permitindo abrir lâminas digitais no Viewer com fluidez — direto da tela do sistema que você já usa.
+
+## Ideia
+
+Cada clínica usa um sistema diferente para gerenciar seus casos (PathoWeb, sistemas próprios, etc.). A extensão lê da tela o código do caso e informações relevantes, consulta o SuperNavi e exibe as lâminas digitalizadas no momento certo — sem trocar de aba, sem copiar e colar.
+
+A cada atualização, novos sistemas são adicionados. Basta que o sistema exiba o código do caso na tela para a extensão funcionar.
+
+### Sistemas integrados
+
+| Sistema | Status | Desde |
+|---------|--------|-------|
+| PathoWeb (`pathoweb.com.br`) | Disponível | v1.0.0 |
+
+> Usa um sistema diferente? [Entre em contato](mailto:contato@supernavi.app) — a integração é simples e rápida.
 
 ## Como funciona
 
-1. O usuário navega para um exame no PathoWeb (`pathoweb.com.br/moduloExame/...`)
-2. A extensão detecta automaticamente o número do caso (AP, PA, IM, C + dígitos)
-3. Um handle lateral **SUPERNAVI** aparece na borda direita da tela
+1. O usuário navega para um caso no sistema da clínica
+2. A extensão detecta automaticamente o código do caso na tela
+3. Um handle lateral **SUPERNAVI** aparece na borda direita
 4. Ao clicar, abre um drawer com as lâminas digitalizadas daquele caso
 5. Clique em uma lâmina para abrir o viewer em tela cheia com zoom de alta resolução
 
@@ -29,7 +43,7 @@ A extensão precisa estar pareada com uma conta SuperNavi para funcionar.
 
 1. No viewer (`viewer.supernavi.app`), vá em **Configurações > Dispositivos** e gere um código de pareamento
 2. Na extensão, insira o código de 6 caracteres no drawer ou na página de opções
-3. Após parear, a extensão autentica via `x-device-token` em todas as requisições
+3. Após parear, a extensão autentica automaticamente todas as requisições
 
 Para desparear, acesse as opções da extensão (clique direito no ícone > Opções) e clique em **Desparear**.
 
@@ -38,34 +52,34 @@ Para desparear, acesse as opções da extensão (clique direito no ícone > Opç
 ```
 ┌──────────────────┐     ┌───────────────────┐     ┌─────────────────┐
 │  content.js      │────▶│  background.js    │────▶│  SuperNavi      │
-│  (PathoWeb DOM)  │◀────│  (Service Worker) │◀────│  Cloud API      │
+│  (DOM do sistema)│◀────│  (Service Worker) │◀────│  Cloud API      │
 └──────────────────┘     └───────────────────┘     └─────────────────┘
 ```
 
 | Arquivo | Responsabilidade |
 |---------|-----------------|
 | `manifest.json` | Configuração Manifest V3, permissões, content scripts |
-| `content.js` | Detecta casos no DOM do PathoWeb, injeta handle e drawer |
+| `content.js` | Detecta códigos de caso no DOM do sistema, injeta handle e drawer |
 | `background.js` | Service worker — chamadas à API, cache de status, pareamento |
-| `options.html/js` | Página de opções (pareamento, configurações avançadas) |
+| `options.html/js` | Página de opções (pareamento, configurações) |
 | `ui.css` | Estilização do handle, drawer e componentes injetados |
 
 ### Content Script (`content.js`)
 
-- Detecta números de caso via regex: `AP`, `PA`, `IM`, `C` + 6-12 dígitos
+- Detecta códigos de caso via regex (ex: `AP`, `PA`, `IM`, `C` + dígitos)
 - Normaliza prefixos (`PA` → `AP`)
-- Scrapes dados do paciente (nome, idade, médico requisitante) do DOM
+- Extrai dados do paciente (nome, idade, médico) do DOM quando disponíveis
 - Cria handle lateral (18px, borda direita) com texto vertical "SUPERNAVI"
 - Drawer de 320px com lista de lâminas, thumbnails e links para o viewer
 - Fluxo de pareamento inline (campo de código de 6 caracteres)
-- `MutationObserver` para detectar navegação SPA no PathoWeb
+- `MutationObserver` para detectar navegação SPA
 - Polling de status a cada 30s enquanto o drawer está aberto
 
 ### Background Service Worker (`background.js`)
 
 - Todas as chamadas à API passam pelo service worker (CORS-free)
 - Cache in-memory de status de caso (TTL 30s)
-- Autenticação dual: `x-device-token` (pareamento) ou `x-supernavi-key` (API key legada)
+- Autenticação via `x-device-token` (pareamento)
 - Mensageria: `CASE_DETECTED`, `GET_AUTH_INFO`, `CLAIM_PAIRING_CODE`, `REQUEST_VIEWER_LINK`, `REFRESH_STATUS`
 
 ## Permissões
@@ -73,7 +87,6 @@ Para desparear, acesse as opções da extensão (clique direito no ícone > Opç
 | Permissão | Motivo |
 |-----------|--------|
 | `storage` | Armazenar token de pareamento e configurações |
-| `activeTab` | Acessar a aba ativa para injeção de conteúdo |
 | `host: pathoweb.com.br` | Content script no PathoWeb |
 | `host: cloud.supernavi.app` | Chamadas à API do SuperNavi |
 
@@ -84,7 +97,6 @@ Acessível via opções da extensão:
 | Campo | Default | Descrição |
 |-------|---------|-----------|
 | Server URL | `https://cloud.supernavi.app` | URL da API SuperNavi |
-| API Key | (vazio) | Chave de API legada (substituída por pareamento) |
 | Debug | `false` | Logs detalhados no console |
 
 ## Desenvolvimento
@@ -100,4 +112,4 @@ Não há build step — a extensão é composta por arquivos estáticos (HTML, C
 zip -r supernavi-extension.zip . -x ".git/*" -x "docs/*"
 ```
 
-Para testar, acesse qualquer exame no PathoWeb que contenha um número de caso (ex: `AP26000454`) com lâminas digitalizadas no SuperNavi.
+Para testar, acesse qualquer caso no sistema integrado que contenha um código de caso com lâminas digitalizadas no SuperNavi.
