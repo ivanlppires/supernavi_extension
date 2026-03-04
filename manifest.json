@@ -6,7 +6,8 @@
   "permissions": ["storage"],
   "host_permissions": [
     "https://pathoweb.com.br/*",
-    "https://cloud.supernavi.app/*"
+    "https://cloud.supernavi.app/*",
+    "https://viewer.supernavi.app/*"
   ],
   "content_scripts": [
     {
