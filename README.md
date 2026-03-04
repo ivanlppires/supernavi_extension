@@ -78,10 +78,14 @@ Política completa: https://supernavi.app/privacy
 ---
 
 ## Arquitetura
-┌──────────────────┐ ┌───────────────────┐ ┌─────────────────┐
-│ content.js │────▶│ background.js │────▶│ SuperNavi │
-│ (DOM do sistema)│◀────│ (Service Worker) │◀────│ Cloud API │
-└──────────────────┘ └───────────────────┘ └─────────────────┘
+
+```text
+┌──────────────────────┐      ┌─────────────────────────┐      ┌──────────────────────┐
+│ content.js           │      │ background.js           │      │ SuperNavi Cloud API   │
+│ (DOM do sistema)     │─────▶│ (Service Worker - MV3)  │─────▶│ cloud.supernavi.app   │
+│                      │◀─────│                         │◀─────│                      │
+└──────────────────────┘      └─────────────────────────┘      └──────────────────────┘
+```
 
 | Arquivo | Responsabilidade |
 |---------|------------------|
@@ -141,3 +145,4 @@ Não há build step: a extensão é composta por arquivos estáticos (HTML/CSS/J
 
 # Gerar zip para Chrome Web Store
 zip -r supernavi-extension.zip . -x ".git/*" -x "docs/*"
+```
