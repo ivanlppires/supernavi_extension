@@ -134,6 +134,30 @@ Acessível via **Opções** da extensão:
 
 ---
 
+## Changelog
+
+### v1.0.3
+- Exibe versão da extensão no footer do drawer (pairing e autenticado)
+- Fix: thumbnails de lâminas BigTIFF não apareciam (bucket S3 incorreto no preview_assets)
+
+### v1.0.2
+- Pareamento por código de 6 caracteres (substitui API key manual)
+- Scraping de dados do paciente (nome, idade, médico) com envio ao cloud
+- Busca manual de caso no drawer
+- Botão de logout/desparear
+
+### v1.0.1
+- Normalização de prefixo PA → AP
+- Suporte a múltiplos prefixos de caso (AP, PA, IM, C)
+
+### v1.0.0
+- Lançamento inicial: integração PathoWeb
+- Detecção automática de código de caso
+- Handle lateral + drawer com lâminas
+- Thumbnails e link direto para o Viewer
+
+---
+
 ## Desenvolvimento
 
 Não há build step: a extensão é composta por arquivos estáticos (HTML/CSS/JS).

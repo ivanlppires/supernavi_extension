@@ -143,17 +143,39 @@ function scrapePatientData() {
   return Object.keys(data).length > 0 ? data : null;
 }
 
-function scrapePatientDataWithRetry(maxAttempts = 6, intervalMs = 2000) {
+function scrapePatientDataWithRetry(maxAttempts = 10, intervalMs = 2000) {
   let attempts = 0;
-  const tryNow = () => {
+  const tryNow = async () => {
     attempts++;
     const data = scrapePatientData();
     if (data && data.patientName) {
+      const changed = !currentPatientData
+        || currentPatientData.patientName !== data.patientName
+        || currentPatientData.doctor !== data.doctor
+        || currentPatientData.age !== data.age
+        || currentPatientData.patientId !== data.patientId;
+
       currentPatientData = data;
+
+      const cfg = await getConfig();
+      if (cfg.debug) console.log('[SuperNavi] Patient data scraped:', data);
+
+      // Proactively enrich case in cloud whenever data is new or changed
+      if (changed && currentCaseBase && authInfo?.authenticated) {
+        chrome.runtime.sendMessage({
+          type: 'ENRICH_CASE',
+          caseBase: currentCaseBase,
+          patientData: data,
+        });
+      }
       return;
     }
     if (attempts < maxAttempts) {
       setTimeout(tryNow, intervalMs);
+    } else {
+      getConfig().then(cfg => {
+        if (cfg.debug) console.warn('[SuperNavi] Patient data scraping exhausted all attempts');
+      });
     }
   };
   tryNow();
@@ -282,6 +304,7 @@ function renderPairingView() {
         </button>
         <div class="snavi-pair-feedback"></div>
       </div>
+      <div class="snavi-drawer-version">v${chrome.runtime.getManifest().version}</div>
     </div>
   `;
 
@@ -417,6 +440,7 @@ function renderAuthenticatedView() {
             <button class="snavi-search-toggle" title="Buscar caso">${ICON.search}</button>
             <button class="snavi-logout-btn" title="Desconectar">${ICON.logout}</button>
           </div>`}
+      <div class="snavi-drawer-version">v${chrome.runtime.getManifest().version}</div>
     </div>
   `;
 
@@ -634,12 +658,17 @@ function onCaseChange(newCaseBase) {
   if (newCaseBase === currentCaseBase) return;
   currentCaseBase = newCaseBase;
   currentStatus = null;
+  currentPatientData = null; // Reset stale patient data from previous case
   if (handleEl) {
     handleEl.classList.toggle('snavi-handle--active', !!currentCaseBase);
   }
   if (drawerOpen) renderDrawerContent();
   if (currentCaseBase && authInfo?.authenticated) {
     requestCaseStatus(currentCaseBase);
+  }
+  // Re-scrape patient data for the new case page
+  if (currentCaseBase) {
+    scrapePatientDataWithRetry();
   }
 }
 

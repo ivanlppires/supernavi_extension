@@ -578,6 +578,14 @@
   border-top: 1px solid var(--sn-separator);
 }
 
+.snavi-drawer-version {
+  font-family: var(--sn-mono);
+  font-size: 10px;
+  color: var(--sn-text-muted);
+  text-align: right;
+  padding: 4px 2px 0;
+}
+
 .snavi-drawer-user {
   display: flex;
   align-items: center;

@@ -219,6 +219,25 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
+  if (msg.type === 'ENRICH_CASE') {
+    log('Enriching case:', msg.caseBase, msg.patientData);
+
+    apiCall(`/api/ui-bridge/cases/${encodeURIComponent(msg.caseBase)}/enrich`, {
+      method: 'POST',
+      body: JSON.stringify({ patientData: msg.patientData }),
+    })
+      .then(data => {
+        log('Case enriched:', data);
+        if (tabId) chrome.tabs.sendMessage(tabId, { type: 'ENRICH_RESULT', success: true, ...data });
+      })
+      .catch(err => {
+        log('Enrich error:', err.message);
+        if (tabId) chrome.tabs.sendMessage(tabId, { type: 'ENRICH_RESULT', success: false, error: err.message });
+      });
+
+    return true;
+  }
+
   if (msg.type === 'REFRESH_STATUS') {
     statusCache.delete(msg.caseBase?.toUpperCase());
     if (msg.caseBase) {
