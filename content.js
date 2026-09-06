@@ -6,7 +6,9 @@
  * PA (Patologia Anatômica) is normalized to AP (Anatomopatológico).
  */
 
-const AP_PATTERN = /\b((?:AP|PA|IM|C)\d{6,12})\b/i;
+// AP/PA (anatomopatológico), C (citologia), IM (imuno), RE (revisão externa:
+// slide from another lab, numbered by the clinic in PathoWeb, e.g. RE26000003)
+const AP_PATTERN = /\b((?:AP|PA|IM|C|RE)\d{6,12})\b/i;
 const POLL_INTERVAL_MS = 30_000;
 
 let currentCaseBase = null;
