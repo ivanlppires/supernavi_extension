@@ -96,7 +96,7 @@ Política completa: https://supernavi.app/privacy
 | `ui.css` | Estilo do handle/drawer e UI injetada |
 
 ### Content Script (`content.js`)
-- Detecta códigos de caso via regex (ex.: `AP`, `PA`, `IM`, `C` + dígitos)
+- Detecta códigos de caso via regex (ex.: `AP`, `PA`, `IM`, `C`, `RE` + dígitos)
 - Normaliza prefixos quando necessário
 - Lê metadados **visíveis na tela** quando disponíveis (ex.: rótulos/identificadores do caso) **somente para contextualização**
 - Injeta handle lateral (18px, borda direita) com texto vertical “SUPERNAVI”
@@ -136,6 +136,9 @@ Acessível via **Opções** da extensão:
 
 ## Changelog
 
+### v1.0.4
+- Reconhece casos `RE` (revisão externa: lâmina de outro laboratório numerada pela clínica, ex. `RE26000003`) nas páginas do PathoWeb.
+
 ### v1.0.3
 - Exibe versão da extensão no footer do drawer (pairing e autenticado)
 - Fix: thumbnails de lâminas BigTIFF não apareciam (bucket S3 incorreto no preview_assets)
@@ -148,7 +151,7 @@ Acessível via **Opções** da extensão:
 
 ### v1.0.1
 - Normalização de prefixo PA → AP
-- Suporte a múltiplos prefixos de caso (AP, PA, IM, C)
+- Suporte a múltiplos prefixos de caso (AP, PA, IM, C, RE = revisão externa)
 
 ### v1.0.0
 - Lançamento inicial: integração PathoWeb
