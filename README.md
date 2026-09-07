@@ -39,7 +39,9 @@ Usa outro sistema e quer integrar? Fale com a equipe: **support@supernavi.app**
 
 ### Chrome Web Store (recomendado)
 Instale diretamente pela Chrome Web Store (sem modo desenvolvedor).  
-> Link: **(inserir URL do item publicado)**
+> Link: **https://chromewebstore.google.com/detail/ienpfeeomikoabjplknkmklglimfoneh**
+>
+> Painel do desenvolvedor: item `ienpfeeomikoabjplknkmklglimfoneh`. Atualizar = subir o zip em Informações sobre o pacote e enviar para revisão.
 
 ### Modo desenvolvedor (dev)
 1. Clone este repositório
